@@ -2,11 +2,13 @@
 """Runs on the Gateway host every few minutes: the only link between Vigía and Relevo, so Relevo stays isolated.
 Vigía -> data/inbox/candidates.json. data/outbox/*.json -> Vigía applications."""
 import json
+import os
 import subprocess
 from pathlib import Path
 
 BASE = Path("/srv/apps/relevo")
 MIN_MATCH = 8
+WINDOW_HOURS = int(os.environ.get("RELEVO_WINDOW_HOURS", "36"))
 EXPORT = r'''
 import json, sqlite3, sys
 args = json.loads(sys.argv[1])
@@ -15,8 +17,8 @@ acted = {r[0] for r in c.execute("select job_id from actions")}
 acted |= {r[0] for r in c.execute("select job_id from applications where job_id is not null")}
 rows = c.execute("""select j.id,j.title,j.company,j.url,j.description,j.posted_at,j.seen_in,j.flags,r.match,r.why,r.years,r.blockers
   from jobs j join job_readings r on r.job_id=j.id
-  where r.match>=? and r.eligible='yes' and j.verdict in ('fit','review') and j.first_seen>=datetime('now','-36 hours')
-  order by r.match desc, j.first_seen desc""", (args["min_match"],)).fetchall()
+  where r.match>=? and r.eligible='yes' and j.verdict in ('fit','review') and j.first_seen>=datetime('now',?)
+  order by r.match desc, j.first_seen desc""", (args["min_match"], "-%d hours" % args["hours"])).fetchall()
 out = []
 for r in rows:
     if r["id"] in acted or r["id"] in args["shortlist"] or (r["years"] or 0) > 4:
@@ -57,7 +59,7 @@ def shortlist() -> list[int]:
 def main() -> None:
     (BASE / "data/inbox").mkdir(parents=True, exist_ok=True)
     (BASE / "data/outbox/done").mkdir(parents=True, exist_ok=True)
-    out = vigia(EXPORT, json.dumps({"min_match": MIN_MATCH, "shortlist": shortlist()}))
+    out = vigia(EXPORT, json.dumps({"min_match": MIN_MATCH, "hours": WINDOW_HOURS, "shortlist": shortlist()}))
     tmp = BASE / "data/inbox/candidates.tmp"
     tmp.write_text(out)
     tmp.replace(BASE / "data/inbox/candidates.json")
