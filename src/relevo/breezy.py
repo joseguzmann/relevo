@@ -15,7 +15,7 @@ STANDARD = [  # (form key, page name, label, kind)
     ("email_address", "cEmail", "Email Address", "email"),
     ("phone_number", "cPhoneNumber", "Phone Number", "text"),
     ("address", "cAddress", "Address (city, country)", "text"),
-    ("summary", "cSummary", "Summary", "long_text"),
+    ("summary", "cSummary", "Experience Summary", "long_text"),
     ("cover_letter", "cCoverLetter", "Cover Letter", "long_text"),
 ]
 SUBFORMS = ("education", "work_history", "profile_photo", "eeoc")  # only a person fills these
@@ -46,7 +46,7 @@ def parse_form(url: str, data: dict) -> Form:
             raise ValueError(f"Breezy field a person must fill: {key}")
     fields = []
     for key, name, label, kind in STANDARD:
-        state = form.get(key, "hidden")
+        state = form.get(key, "optional" if key == "summary" else "hidden")  # the page shows the summary box unless told not to
         if state != "hidden":
             fields.append(Field(name, label, kind, state == "required"))
     if form.get("salary", "hidden") != "hidden":
