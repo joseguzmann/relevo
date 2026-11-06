@@ -1,4 +1,6 @@
 """One SQLite file. An item is a job on its way out; `data` holds the panel."""
+from __future__ import annotations
+
 import json
 import sqlite3
 import threading
