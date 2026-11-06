@@ -11,7 +11,7 @@ QUERY = ("query J($organizationHostedJobsPageName:String!,$jobPostingId:String!)
          "{applicationForm{sections{fieldEntries{field isRequired}}}}}")
 KINDS = {"String": "text", "LongText": "long_text", "Email": "email", "Number": "number", "File": "file",
          "ValueSelect": "single_choice", "MultiValueSelect": "multi_choice", "Boolean": "yes_no",
-         "Location": "location", "Phone": "text"}
+         "Location": "location", "Phone": "text", "Url": "text", "SocialLink": "text"}
 
 
 def parse_url(url: str) -> tuple[str, str]:
