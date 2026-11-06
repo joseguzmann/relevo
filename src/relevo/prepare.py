@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from relevo import ashby, filler, llm, route
+from relevo import ashby, filler, llm, route, track
 
 ALWAYS_ASK = re.compile(r"consent|agree|authori[sz]e|terms|privacy|gender|race|ethnic|disabilit|veteran|pronoun", re.I)
 ALWAYS_CONFIRM = re.compile(r"salary|compensation|expect|rate|sponsor|visa|work permit|authorized to work|"
@@ -57,7 +57,7 @@ def reread(job: dict, text: str) -> dict:
     return llm.ask(system, f"{job.get('title')} at {job.get('company')}\n\n{text}", llm.REREAD)
 
 
-def prepare(job: dict, kit: Kit) -> tuple[str, str, dict, str]:
+def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, str]:
     """Returns (route, status, panel, reason). `manual` and `dropped` never reach a Send button."""
     way, target = route.decide(job)
     panel = {"job": {k: job.get(k) for k in ("id", "title", "company", "url", "why", "match", "blockers", "posted_at",
@@ -71,6 +71,8 @@ def prepare(job: dict, kit: Kit) -> tuple[str, str, dict, str]:
         return way, "dropped", panel, check["reason"]
     family = kit.family(job)
     panel["family"] = family
+    panel["codes"] = {"pdf": track.new_code(), "form": track.new_code()}
+    cv = track.stamp_cv(kit.cv(family), Path(data) / "cv" / str(job["id"]), panel["codes"]["pdf"])
     if way == "ashby":
         form = ashby.fetch_form(target)
         fields = [{"id": f.id, "label": f.label, "kind": f.kind, "options": list(f.options)} for f in form.fields]
@@ -78,12 +80,15 @@ def prepare(job: dict, kit: Kit) -> tuple[str, str, dict, str]:
         user = f"# Candidate\n{kit.facts(family)}\n\n# Job\n{job.get('description', '')}\n\n# Fields\n{fields}"
         drafted = llm.ask(system, user, llm.ANSWERS)["answers"]
         panel["form_url"] = form.url
-        panel["fields"] = merge(form, drafted, kit.cv(family))
+        panel["fields"] = merge(form, drafted, cv)
+        for f in panel["fields"]:
+            if isinstance(f["value"], str) and f["kind"] != "file":
+                f["value"] = track.in_text(f["value"], panel["codes"]["form"])
         panel["unknown"] = filler.scan(form)
     else:
         system = "Write a short application email in the candidate's voice, following the writing rules exactly."
         user = (f"# Writing rules\n{kit.text('writing.md')}\n\n# Candidate\n{kit.facts(family)}\n\n"
                 f"# Post\n{job.get('description', '')}")
         mail = llm.ask(system, user, llm.EMAIL)
-        panel["email"] = {"to": target, "subject": mail["subject"], "body": mail["body"], "cv": kit.cv(family)}
+        panel["email"] = {"to": target, "subject": mail["subject"], "body": track.in_text(mail["body"], panel["codes"]["form"]), "cv": cv}
     return way, "ready", panel, ""

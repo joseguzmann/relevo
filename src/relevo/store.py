@@ -68,11 +68,6 @@ class Store:
             self.db.execute("update items set status=?, reason=?, updated_at=? where id=?",
                             (status, reason, now(), item_id))
 
-    def prepared_today(self) -> int:
-        day = now()[:10]
-        return self.db.execute("select count(*) from items where route!='manual' and status!='dropped' "
-                               "and substr(created_at,1,10)=?", (day,)).fetchone()[0]
-
     def add_sub(self, sub: dict) -> None:
         with self.lock:
             self.db.execute("insert or replace into subs values(?,?)", (sub["endpoint"], json.dumps(sub)))

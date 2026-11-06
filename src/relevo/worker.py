@@ -22,7 +22,6 @@ class Config:
         self.kit = os.environ.get("RELEVO_KIT", "/kit")
         self.site = os.environ.get("RELEVO_SITE", "https://relevo.joseguzman.dev")
         self.sender = os.environ.get("RELEVO_FROM", "")
-        self.daily_cap = int(os.environ.get("RELEVO_DAILY_CAP", "5"))
         self.quiet = (22, 8)
         self.token = f"{self.data}/gmail-send.json"
 
@@ -36,6 +35,18 @@ def quiet(cfg: Config, hour: int | None = None) -> bool:
 def candidates(cfg: Config) -> list[dict]:
     path = Path(cfg.data) / "inbox" / "candidates.json"
     return json.loads(path.read_text()) if path.exists() else []
+
+
+def backlog(cfg: Config) -> list[dict]:
+    path = Path(cfg.data) / "inbox" / "backlog.json"
+    return json.loads(path.read_text()) if path.exists() else []
+
+
+def notify(cfg: Config, store: Store, pem: str, job: dict, status: str, item: int | None) -> None:
+    """Every job in the app gets a notification. Only one the reread dropped does not."""
+    if item and status != "dropped":
+        title = job.get("title", "")[:90]
+        push.send(store, pem, cfg.site, job.get("company") or "Relevo", f"A mano · {title}" if status == "manual" else title, item)
 
 
 def page_text(url: str) -> str:
@@ -56,18 +67,13 @@ def tick(cfg: Config, store: Store, kit: prepare.Kit, pem: str) -> None:
     for job in candidates(cfg):
         if store.known(job["id"]):
             continue
-        if store.prepared_today() >= cfg.daily_cap:
-            return
         try:
             job["page_text"] = page_text(job.get("url", ""))
-            way, status, panel, reason = prepare.prepare(job, kit)
+            way, status, panel, reason = prepare.prepare(job, kit, cfg.data)
         except Exception as e:  # one bad posting must not stop the others
             log.warning("job %s: %s", job["id"], str(e)[:200])
-            store.add(job["id"], "manual", "manual", {"job": job, "target": job.get("url", "")}, str(e)[:200])
-            continue
-        item = store.add(job["id"], way, status, panel, reason)
-        if item and status == "ready":
-            push.send(store, pem, cfg.site, job.get("company") or "Relevo", job.get("title", "")[:90], item)
+            way, status, panel, reason = "manual", "manual", {"job": job, "target": job.get("url", "")}, str(e)[:200]
+        notify(cfg, store, pem, job, status, store.add(job["id"], way, status, panel, reason))
 
 
 def outbox(cfg: Config, item: dict, material: str) -> None:
@@ -77,7 +83,8 @@ def outbox(cfg: Config, item: dict, material: str) -> None:
     folder.mkdir(exist_ok=True)
     panel = item["data"]
     record = {"job_id": item["job_id"], "family": panel.get("family"), "route": item["route"], "material": material,
-              "cv": f"v3 {panel.get('family')} (Relevo)", "panel": panel}
+              "cv": f"v3 {panel.get('family')} (Relevo)", "panel": panel, "codes": panel.get("codes", {}),
+              "company": panel.get("job", {}).get("company", "")}
     (folder / f"{item['id']}.json").write_text(json.dumps(record, ensure_ascii=False))
 
 
@@ -142,18 +149,17 @@ def loop(cfg: Config, store: Store, pem: str) -> None:
 
 
 def one(cfg: Config, store: Store, job_id: int) -> None:
-    """Prepares one job on request. It skips the daily cap and quiet hours: a person asked for it."""
-    job = next((j for j in candidates(cfg) if j["id"] == job_id), None)
+    """Prepares one job on request, also from the backlog and in quiet hours: a person asked for it."""
+    job = next((j for j in candidates(cfg) + backlog(cfg) if j["id"] == job_id), None)
     if job is None:
         raise SystemExit(f"job {job_id} is not among the candidates")
     if store.known(job_id):
         raise SystemExit(f"job {job_id} is already in Relevo")
     job["page_text"] = page_text(job.get("url", ""))
-    way, status, panel, reason = prepare.prepare(job, prepare.Kit(cfg.kit))
+    way, status, panel, reason = prepare.prepare(job, prepare.Kit(cfg.kit), cfg.data)
     item = store.add(job_id, way, status, panel, reason)
     print(f"item {item}: {way}, {status}. {reason}")
-    if item and status == "ready":
-        push.send(store, push.keys(cfg.data)[0], cfg.site, job.get("company") or "Relevo", job.get("title", "")[:90], item)
+    notify(cfg, store, push.keys(cfg.data)[0], job, status, item)
 
 
 if __name__ == "__main__":

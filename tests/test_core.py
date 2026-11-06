@@ -81,6 +81,15 @@ class Claim(unittest.TestCase):
         self.assertIsNone(self.store.add(3, "email", "ready", {}))
 
 
+class Track(unittest.TestCase):
+    def test_site_link_gets_the_code(self):
+        from relevo.track import in_text
+        self.assertEqual(in_text("my website is https://joseguzman.dev.", "ab2c"), "my website is https://joseguzman.dev/r/ab2c.")
+        self.assertEqual(in_text("joseguzman.dev/ and more", "ab2c"), "https://joseguzman.dev/r/ab2c and more")
+        self.assertEqual(in_text("https://joseguzman.dev/r/zzzz", "ab2c"), "https://joseguzman.dev/r/zzzz")
+        self.assertEqual(in_text("me@joseguzman.dev", "ab2c"), "me@joseguzman.dev")
+
+
 class Origin(unittest.TestCase):
     def test_post_board_and_ats(self):
         from relevo.route import origin

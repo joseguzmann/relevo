@@ -1,5 +1,5 @@
 FROM mcr.microsoft.com/playwright/python:v1.49.0-noble
-RUN pip install --no-cache-dir --break-system-packages playwright==1.49.0 fastapi "uvicorn[standard]" pywebpush cryptography
+RUN pip install --no-cache-dir --break-system-packages playwright==1.49.0 fastapi "uvicorn[standard]" pywebpush cryptography pypdf
 RUN useradd -m -u 1500 relevo
 USER relevo
 RUN curl -fsSL https://claude.ai/install.sh | bash
