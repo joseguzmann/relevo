@@ -42,7 +42,7 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-@unittest.skipIf(filler is None, "needs Playwright")
+@unittest.skipIf(filler is None or filler.async_playwright is None, "needs Playwright")
 class AfterClick(unittest.TestCase):
     def submit(self, reply):
         server = ThreadingHTTPServer(("127.0.0.1", 0), partial(Handler, reply))

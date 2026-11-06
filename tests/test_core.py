@@ -6,8 +6,11 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-sys.modules.setdefault("playwright", type(sys)("playwright"))
-sys.modules.setdefault("playwright.async_api", type("m", (), {"async_playwright": None}))
+try:
+    import playwright.async_api  # noqa: F401
+except ImportError:  # the core tests run without a browser
+    sys.modules["playwright"] = type(sys)("playwright")
+    sys.modules["playwright.async_api"] = type("m", (), {"async_playwright": None})
 from relevo import ashby, prepare, route  # noqa: E402
 from relevo.store import Store  # noqa: E402
 
