@@ -1,0 +1,16 @@
+# Own network, no LinkedIn sessions, no ip-fort, no logged-in browser. Reads the kit, writes only to its data folder.
+services:
+  relevo:
+    build: {context: .., dockerfile: deploy/Dockerfile}
+    container_name: relevo
+    restart: unless-stopped
+    env_file: /srv/apps/relevo/.env
+    ports: ["127.0.0.1:8004:8000"]
+    volumes:
+      - /srv/apps/relevo/data:/data
+      - /srv/apps/relevo/kit:/kit:ro
+    shm_size: 1g
+    mem_limit: 2g
+    networks: [relevo-net]
+networks:
+  relevo-net: {}

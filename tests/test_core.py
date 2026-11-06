@@ -1,0 +1,82 @@
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.modules.setdefault("playwright", type(sys)("playwright"))
+sys.modules.setdefault("playwright.async_api", type("m", (), {"async_playwright": None}))
+from relevo import ashby, prepare, route  # noqa: E402
+from relevo.store import Store  # noqa: E402
+
+URL = "https://jobs.ashbyhq.com/devsavant/51c02958-afac-4589-8be5-0339dc1003dd"
+FORM = ashby.parse_form(URL, json.loads((Path(__file__).parent / "fixtures/ashby_devsavant.json").read_text()))
+
+
+class Route(unittest.TestCase):
+    def test_linkedin_job_is_never_a_way_out(self):
+        self.assertEqual(route.decide({"url": "https://www.linkedin.com/jobs/view/1", "description": "a@b.co"})[0], "manual")
+
+    def test_post_with_email(self):
+        job = {"url": "https://www.linkedin.com/posts/x", "description": "send it to jobs@acme.io please"}
+        self.assertEqual(route.decide(job), ("email", "jobs@acme.io"))
+
+    def test_post_without_email(self):
+        self.assertEqual(route.decide({"url": "https://www.linkedin.com/posts/x", "description": "DM me"})[0], "manual")
+
+    def test_ashby_found_in_an_aggregator_page(self):
+        job = {"url": "https://remoteyeah.com/x", "page_text": f'href="{URL}/application"'}
+        self.assertEqual(route.decide(job), ("ashby", URL))
+
+
+class Merge(unittest.TestCase):
+    def field(self, text):
+        return next(f for f in FORM.fields if text in f.label)
+
+    def merged(self, text, value, state="ready"):
+        f = self.field(text)
+        out = prepare.merge(FORM, [{"id": f.id, "value": value, "state": state, "source": "s"}], "/kit/cv/backend.pdf")
+        return next(x for x in out if x["id"] == f.id)
+
+    def test_consent_is_never_answered_by_the_model(self):
+        got = self.merged("Consent", "I authorize")
+        self.assertEqual((got["value"], got["state"]), (None, "missing"))
+
+    def test_salary_always_needs_a_look(self):
+        self.assertEqual(self.merged("compensation", 4000)["state"], "confirm")
+
+    def test_value_outside_the_options_is_dropped(self):
+        got = self.merged("specify your country", "Atlantis")
+        self.assertEqual((got["value"], got["state"]), (None, "missing"))
+
+    def test_required_comes_from_the_form(self):
+        self.assertTrue(self.merged("Full Name", "x")["required"])
+
+    def test_file_is_the_family_cv(self):
+        self.assertEqual(self.merged("Resume", "evil.pdf")["value"], "/kit/cv/backend.pdf")
+
+
+class Claim(unittest.TestCase):
+    def setUp(self):
+        self.store = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+
+    def test_two_taps_send_once(self):
+        i = self.store.add(1, "ashby", "ready", {})
+        self.assertTrue(self.store.claim(i))
+        self.assertFalse(self.store.claim(i))
+
+    def test_a_sent_item_cannot_be_edited(self):
+        i = self.store.add(2, "ashby", "ready", {})
+        self.store.finish(i, "sent")
+        self.assertFalse(self.store.save_data(i, {"x": 1}))
+        self.assertFalse(self.store.claim(i))
+
+    def test_same_job_enters_once(self):
+        self.assertIsNotNone(self.store.add(3, "email", "ready", {}))
+        self.assertIsNone(self.store.add(3, "email", "ready", {}))
+
+
+if __name__ == "__main__":
+    unittest.main()

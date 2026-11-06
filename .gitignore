@@ -3,4 +3,4 @@ __pycache__/
 .venv/
 data/
 *.pdf
-*.png
+/*.png

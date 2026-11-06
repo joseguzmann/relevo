@@ -64,7 +64,7 @@ async def _fill_field(page, f, value) -> bool:
     raise ValueError(f"cannot fill {f.kind}")
 
 
-async def run(form: Form, answers: dict, shot: str, submit: bool = False) -> Result:
+async def run(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = ()) -> Result:
     if form.missing(answers) or form.invalid(answers):
         raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
     result = Result()
@@ -82,6 +82,10 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False) -> Res
                 result.verified[f.label] = False
                 print(f"field failed: {f.label}: {str(e)[:160]}")
         result.unknown = await page.evaluate(UNKNOWN_JS, [f.label for f in form.fields])
+        for text in accepted:  # a box the person read and ticked in the panel
+            if text in result.unknown:
+                await page.get_by_text(text.rsplit(" ", 2)[-2] + " " + text.rsplit(" ", 1)[-1], exact=True).first.click()
+                result.unknown.remove(text)
         await page.screenshot(path=shot, full_page=True)
         if submit and not result.failed and not result.unknown:
             await page.get_by_role("button", name="Submit Application").click()
@@ -92,5 +96,26 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False) -> Res
     return result
 
 
-def fill(form: Form, answers: dict, shot: str, submit: bool = False) -> Result:
-    return asyncio.run(run(form, answers, shot, submit))
+async def _scan(form: Form) -> list:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        page = await browser.new_page()
+        await page.goto(form.url, wait_until="networkidle", timeout=45000)
+        await page.wait_for_timeout(1500)
+        unknown = await page.evaluate(UNKNOWN_JS, [f.label for f in form.fields])
+        await browser.close()
+    return unknown
+
+
+def scan(form: Form) -> list:
+    """What the page asks that the form data does not list. A person has to see these."""
+    return asyncio.run(_scan(form))
+
+
+def looks_sent(text: str) -> bool:
+    low = text.lower()
+    return "success" in low or "thank you for applying" in low or "application was submitted" in low
+
+
+def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = ()) -> Result:
+    return asyncio.run(run(form, answers, shot, submit, tuple(accepted)))
