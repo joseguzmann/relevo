@@ -174,6 +174,28 @@ async def code(item_id: int, request: Request):
     return {"ok": True}
 
 
+@app.get("/api/items/{item_id}/live", dependencies=[Depends(session)])
+def live(item_id: int):
+    path = worker.live_file(cfg, need(item_id)["id"])
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@app.post("/api/items/{item_id}/tap", dependencies=[Depends(session)])
+async def tap(item_id: int, request: Request):
+    """A tap on the live picture, as a fraction of its width and height. The worker clicks the same spot."""
+    if need(item_id)["status"] != "captcha":
+        raise HTTPException(409, "this one is not waiting for a captcha")
+    body = await request.json()
+    x, y = float(body.get("x", -1)), float(body.get("y", -1))
+    if not (0 <= x <= 1 and 0 <= y <= 1):
+        raise HTTPException(400, "tap outside the picture")
+    with worker.taps_file(cfg, item_id).open("a") as f:
+        f.write(f"{x:.4f},{y:.4f}\n")
+    return {"ok": True}
+
+
 @app.get("/api/items/{item_id}/sent", dependencies=[Depends(session)])
 def sent(item_id: int):
     path = worker.evidence(cfg, need(item_id)["id"])

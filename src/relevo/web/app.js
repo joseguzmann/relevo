@@ -12,7 +12,7 @@ const api = async (path, opts = {}) => {
   return r.json();
 };
 const STATE = {ready: 'listo', confirm: 'confirmar', missing: 'falta'};
-const STATUS = {ready: 'Para enviar', code: 'Falta el código', sending: 'Enviando…', sent: 'Enviada', failed: 'No se envió', unclear: 'Revisar', manual: 'Manual', dropped: 'Descartada'};
+const STATUS = {ready: 'Para enviar', code: 'Falta el código', captcha: 'Falta el captcha', sending: 'Enviando…', sent: 'Enviada', failed: 'No se envió', unclear: 'Revisar', manual: 'Manual', dropped: 'Descartada'};
 
 function login() {
   const code = el('input', {type: 'password', placeholder: 'Clave', autocomplete: 'current-password'});
@@ -36,7 +36,7 @@ async function enablePush(btn) {
 
 async function list() {
   const items = await api('/items');
-  const open = items.filter(i => ['ready', 'failed', 'unclear', 'sending', 'code'].includes(i.status));
+  const open = items.filter(i => ['ready', 'failed', 'unclear', 'sending', 'code', 'captcha'].includes(i.status));
   const rest = items.filter(i => !open.includes(i));
   const row = i => el('div', {className: 'card tap', onclick: () => { location.hash = i.id; }},
     i.warning ? el('div', {className: 'tag confirm', textContent: i.warning.discard ? '⚠️ Posible descarte' : '⚠️ Con duda'}) : null,
@@ -143,6 +143,26 @@ async function detail(id) {
     working(busy, 'Enviando…');
     views.push(el('div', {className: 'bar'}, el('div', {}, msg, busy)));
     poll(id, msg);
+  } else if (item.status === 'captcha') {
+    const msg = el('p', {className: 'soft', textContent: 'Toca la imagen como si fuera la página: primero la casilla, luego lo que pida. Se actualiza sola.'});
+    const img = el('img', {className: 'shot live', alt: 'La página con el captcha'});
+    img.onclick = async e => {
+      const r = img.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      const dot = el('span', {className: 'tapdot'});
+      dot.style.left = (x * 100) + '%'; dot.style.top = (y * 100) + '%';
+      img.parentElement.append(dot); setTimeout(() => dot.remove(), 700);
+      await api(`/items/${id}/tap`, {method: 'POST', body: JSON.stringify({x, y})}).catch(() => {});
+    };
+    views.push(el('h2', {textContent: 'Resuelve el captcha'}), el('div', {className: 'card'}, msg, el('div', {className: 'livebox'}, img)));
+    (async () => {
+      while (location.hash.slice(1) === String(id)) {
+        img.src = `/api/items/${id}/live?t=${Date.now()}`;
+        await new Promise(r => setTimeout(r, 900));
+        const it = await api('/items/' + id).catch(() => null);
+        if (it && it.status !== 'captcha') { if (it.status === 'sending') return poll(id, msg); return detail(id); }
+      }
+    })();
   } else if (item.status === 'code') {
     const input = el('input', {type: 'text', placeholder: '8 caracteres', autocomplete: 'one-time-code', autocapitalize: 'off', maxLength: 12});
     const msg = el('div', {className: 'soft'});
@@ -177,7 +197,7 @@ async function detail(id) {
         el('pre', {className: 'soft', textContent: r.body || '(sin cuerpo)'}))) : [el('p', {className: 'soft', textContent: 'No hay registro de esta postulación.'})]));
     }}, el('summary', {textContent: 'Lo que se envió'}), box));
   }
-  if (!['ready', 'code'].includes(item.status)) views.push(el('button', {className: 'back bottom', textContent: '‹ Volver a la lista', onclick: () => { location.hash = ''; }}));
+  if (!['ready', 'code', 'captcha'].includes(item.status)) views.push(el('button', {className: 'back bottom', textContent: '‹ Volver a la lista', onclick: () => { location.hash = ''; }}));
   root.replaceChildren(...views);
 }
 

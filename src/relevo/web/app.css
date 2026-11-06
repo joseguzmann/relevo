@@ -20,3 +20,5 @@ details summary{cursor:pointer;color:var(--brand)}
 a{color:var(--brand)}
 .history{margin-top:20px}.history summary{font-size:17px;font-weight:600;margin-bottom:10px}
 .card,pre{overflow-wrap:anywhere;min-width:0}pre{max-width:100%}
+
+.livebox{position:relative}.live{display:block;width:100%;cursor:crosshair;touch-action:manipulation}.tapdot{position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:var(--brand);opacity:.7;pointer-events:none}

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
+from relevo import bamboohr
 from relevo.models import Form
 
 
@@ -172,7 +173,36 @@ async def _fill_breezy(page, f, value) -> bool:
     return ok
 
 
+async def _fill_bamboohr(page, f, value) -> bool:
+    if f.kind == "file":
+        await page.locator("input[type=file]").first.set_input_files(value)
+        for _ in range(15):
+            await page.wait_for_timeout(1000)
+            if value.rsplit("/", 1)[-1] in await page.locator("form").inner_text():
+                return True
+        return False
+    if f.id == "countryId.value":  # a menu with a search box over a hidden select
+        await page.locator('button[aria-label^="Country"]').click()
+        await page.locator(".fab-MenuSearch__input").fill(value)
+        await page.wait_for_timeout(600)
+        await page.get_by_role("menuitem", name=value, exact=True).first.click()
+        await page.wait_for_timeout(1500)  # the province and postal code fields change with the country
+        return (await page.locator('button[aria-label^="Country"]').get_attribute("aria-label")).endswith(value)
+    group = page.locator(f'input[name="{f.id}"]')
+    if f.kind == "yes_no":
+        await group.first.set_checked(value == "Yes", force=True)
+        return await group.first.is_checked() == (value == "Yes")
+    if f.kind == "single_choice":  # radios; a multi question keeps the option id as value, so pick by label
+        await group.locator("xpath=ancestor::label").filter(has_text=re.compile(rf"^\s*{re.escape(value)}\s*$")).first.click()
+        return await page.locator(f'input[name="{f.id}"]:checked').locator("xpath=ancestor::label").inner_text() == value
+    box = page.locator(f'[name="{f.id}"]').first
+    await box.fill(str(value))
+    return await box.input_value() == str(value)
+
+
 async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
+    if ats == "bamboohr":
+        return await _fill_bamboohr(page, f, value)
     if ats == "breezy":
         return await _fill_breezy(page, f, value)
     if ats == "greenhouse":
@@ -209,6 +239,42 @@ async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
     raise ValueError(f"cannot fill {f.kind}")
 
 
+CAPTCHA_ATS = {"bamboohr"}  # a visible captcha box before the submit button
+CAPTCHA_BOX = 'iframe[src*="recaptcha/api2/anchor"]'
+TOKEN_JS = "() => !!document.querySelector('[name=g-recaptcha-response]')?.value"
+
+
+async def _human_captcha(page, captcha: dict, minutes: int = 10) -> bool:
+    """The person solves the captcha: the phone shows this page as it is and each tap lands here at the same spot.
+    Relevo never answers it and never calls a solving service."""
+    if not await page.locator(CAPTCHA_BOX).count() or await page.evaluate(TOKEN_JS):
+        return True
+    await page.locator(CAPTCHA_BOX).first.evaluate("e => { e.scrollIntoView({block: 'start'}); window.scrollBy(0, -140); }")
+    live, taps = Path(captcha["live"]), Path(captcha["taps"])
+    taps.unlink(missing_ok=True)
+    if captcha.get("start"):
+        captcha["start"]()
+    size = page.viewport_size
+    for _ in range(minutes * 60 * 2):
+        if await page.evaluate(TOKEN_JS):
+            await page.wait_for_timeout(800)  # let the box show its tick before the last picture
+            await page.screenshot(path=str(live) + ".tmp", type="jpeg", quality=70)
+            Path(str(live) + ".tmp").replace(live)
+            return True
+        await page.screenshot(path=str(live) + ".tmp", type="jpeg", quality=70)
+        Path(str(live) + ".tmp").replace(live)
+        if taps.exists():
+            batch = taps.with_suffix(".work")
+            taps.replace(batch)
+            for line in batch.read_text().split():
+                x, y = (float(v) for v in line.split(","))
+                await page.mouse.click(x * size["width"], y * size["height"])
+                await page.wait_for_timeout(250)
+            batch.unlink()
+        await page.wait_for_timeout(500)
+    return False
+
+
 CODE_ASKED = re.compile(r"verification code was sent|enter the \d+-character code", re.I)
 
 
@@ -234,9 +300,17 @@ async def _enter_code(page, code: str) -> None:
 
 
 async def _submit(page, result: Result, after_shot: str, seconds: int, code_file: str = "", asked=None,
-                  ats: str = "ashby") -> None:
+                  ats: str = "ashby", captcha: dict | None = None) -> None:
     """Clicks once, then waits for the answer and keeps the evidence, whatever it turns out to be."""
     replies = []
+    if ats in CAPTCHA_ATS:
+        if not captcha or not await _human_captcha(page, captcha):
+            result.confirmation = "captcha not solved: nothing was sent"
+            if after_shot:
+                await page.screenshot(path=after_shot, full_page=True)
+            return
+        if captcha.get("done"):
+            captcha["done"]()
 
     def sent(request):
         if request.method in ("POST", "PUT", "PATCH") and not NOISE.search(request.url):
@@ -317,7 +391,20 @@ BZ_UNKNOWN_JS = r"""(ids) => {
 }"""
 
 
+BH_UNKNOWN_JS = r"""(ids) => {
+  const skip = /^(nickname_|g-recaptcha|resumeFileId|genderId|ethnicityId|disabilityId|veteranStatusId)/, out = [];
+  for (const e of document.querySelectorAll('form input, form textarea, form select')) {
+    if (!e.name || e.type === 'hidden' || e.type === 'file' || skip.test(e.name) || ids.includes(e.name)) continue;
+    const label = (e.id && document.querySelector(`label[for="${CSS.escape(e.id)}"]`)?.innerText) || e.name;
+    out.push(label.replace(/\s+/g, ' ').trim().slice(0, 200));
+  }
+  return [...new Set(out)];
+}"""
+
+
 async def _unknown(page, form: Form) -> list:
+    if form.ats == "bamboohr":
+        return await page.evaluate(BH_UNKNOWN_JS, [f.id for f in form.fields])
     if form.ats == "breezy":
         return await page.evaluate(BZ_UNKNOWN_JS, [f.id for f in form.fields])
     if form.ats == "manatal":
@@ -327,16 +414,25 @@ async def _unknown(page, form: Form) -> list:
     return await page.evaluate(UNKNOWN_JS, [f.label for f in form.fields])
 
 
+async def _open(page, form: Form) -> None:
+    await page.goto(form.url, wait_until="networkidle", timeout=45000)
+    if form.ats == "bamboohr":
+        await page.get_by_text(bamboohr.OPEN).first.click()
+        await page.wait_for_timeout(2500)
+    await page.wait_for_timeout(1500)
+
+
 async def run(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (),
-              after_shot: str = "", seconds: int = 45, code_file: str = "", asked=None) -> Result:
+              after_shot: str = "", seconds: int = 45, code_file: str = "", asked=None, captcha: dict | None = None) -> Result:
     if form.missing(answers) or form.invalid(answers):
         raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
     result = Result()
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
-        page = await browser.new_page(viewport={"width": 1200, "height": 1000})
-        await page.goto(form.url, wait_until="networkidle", timeout=45000)
-        await page.wait_for_timeout(1500)
+        # a phone-sized page when the person may have to solve a captcha on it
+        view = {"width": 440, "height": 820} if form.ats in CAPTCHA_ATS else {"width": 1200, "height": 1000}
+        page = await browser.new_page(viewport=view)
+        await _open(page, form)
         for f in form.fields:
             if answers.get(f.id) in (None, "", []):
                 continue
@@ -352,7 +448,7 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False, accept
                 result.unknown.remove(text)
         await page.screenshot(path=shot, full_page=True)
         if submit and not result.failed and not result.unknown:
-            await _submit(page, result, after_shot, seconds, code_file, asked, form.ats)
+            await _submit(page, result, after_shot, seconds, code_file, asked, form.ats, captcha)
         await browser.close()
     return result
 
@@ -361,8 +457,7 @@ async def _scan(form: Form) -> list:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
         page = await browser.new_page()
-        await page.goto(form.url, wait_until="networkidle", timeout=45000)
-        await page.wait_for_timeout(1500)
+        await _open(page, form)
         unknown = await _unknown(page, form)
         await browser.close()
     return unknown
@@ -380,5 +475,5 @@ def looks_sent(text: str) -> bool:
 
 
 def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (), after_shot: str = "",
-         code_file: str = "", asked=None) -> Result:
-    return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot, 45, code_file, asked))
+         code_file: str = "", asked=None, captcha: dict | None = None) -> Result:
+    return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot, 45, code_file, asked, captcha))
