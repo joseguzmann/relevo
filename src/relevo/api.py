@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from relevo import push, worker
+from relevo import push, route, worker
 from relevo.store import Store
 
 cfg = worker.Config()
@@ -86,8 +86,13 @@ async def subscribe(request: Request):
 @app.get("/api/items", dependencies=[Depends(session)])
 def items():
     keep = ("title", "company", "match")
-    return [{"id": i["id"], "route": i["route"], "status": i["status"], "reason": i["reason"],
+    return [{"id": i["id"], "route": i["route"], "status": i["status"], "reason": i["reason"], "origin": origin(i),
              "job": {k: i["data"].get("job", {}).get(k) for k in keep}} for i in store.list()]
+
+
+def origin(it: dict) -> dict:
+    panel = it["data"]
+    return route.origin(panel.get("job", {}), it["route"], panel.get("email", {}).get("to", ""))
 
 
 def need(item_id: int) -> dict:
@@ -99,7 +104,8 @@ def need(item_id: int) -> dict:
 
 @app.get("/api/items/{item_id}", dependencies=[Depends(session)])
 def item(item_id: int):
-    return need(item_id)
+    it = need(item_id)
+    return {**it, "origin": origin(it)}
 
 
 @app.put("/api/items/{item_id}", dependencies=[Depends(session)])

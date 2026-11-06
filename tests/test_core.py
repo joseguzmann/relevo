@@ -81,5 +81,17 @@ class Claim(unittest.TestCase):
         self.assertIsNone(self.store.add(3, "email", "ready", {}))
 
 
+class Origin(unittest.TestCase):
+    def test_post_board_and_ats(self):
+        from relevo.route import origin
+        post = origin({"url": "https://www.linkedin.com/posts/a_b"}, "email", "x@y.co")
+        self.assertEqual((post["channel"], post["exit"]), ("Post de LinkedIn", "Correo a x@y.co"))
+        ats = origin({"url": "https://jobs.ashbyhq.com/c/1", "sources": ["ashby"], "location": "San Francisco"}, "ashby")
+        self.assertEqual((ats["channel"], ats["source"], ats["location"]), ("ATS", "Ashby", "San Francisco"))
+        board = origin({"url": "https://weworkremotely.com/j", "sources": ["weworkremotely"]}, "manual")
+        self.assertEqual((board["channel"], board["source"], board["exit"]), ("Bolsa", "We Work Remotely", "A mano"))
+        self.assertEqual(origin({"url": "https://acme.io/j"}, "manual")["source"], "acme.io")
+
+
 if __name__ == "__main__":
     unittest.main()

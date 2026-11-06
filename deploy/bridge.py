@@ -15,7 +15,7 @@ args = json.loads(sys.argv[1])
 c = sqlite3.connect("/data/vigia.db"); c.row_factory = sqlite3.Row
 acted = {r[0] for r in c.execute("select job_id from actions")}
 acted |= {r[0] for r in c.execute("select job_id from applications where job_id is not null")}
-rows = c.execute("""select j.id,j.title,j.company,j.url,j.description,j.posted_at,j.seen_in,j.flags,r.match,r.why,r.years,r.blockers
+rows = c.execute("""select j.id,j.title,j.company,j.url,j.description,j.posted_at,j.seen_in,j.flags,j.location,r.match,r.why,r.years,r.blockers
   from jobs j join job_readings r on r.job_id=j.id
   where r.match>=? and r.eligible='yes' and j.verdict in ('fit','review') and j.first_seen>=datetime('now',?)
   order by r.match desc, j.first_seen desc""", (args["min_match"], "-%d hours" % args["hours"])).fetchall()
@@ -26,9 +26,11 @@ for r in rows:
     if "bairesdev" in (r["company"] or "").lower():
         continue
     flags = json.loads(r["flags"] or "{}")
-    urls = [s.get("url", "") for s in json.loads(r["seen_in"] or "[]")]
+    seen = json.loads(r["seen_in"] or "[]")
+    urls = [s.get("url", "") for s in seen]
     hist = [dict(h) for h in c.execute("select number,title,status from applications where lower(company)=lower(?)", (r["company"],))]
     out.append({"id": r["id"], "title": r["title"], "company": r["company"], "url": r["url"], "urls": urls,
+                "sources": sorted({s.get("source", "") for s in seen} - {""}), "location": r["location"],
                 "description": r["description"], "posted_at": r["posted_at"], "match": r["match"], "why": r["why"],
                 "blockers": r["blockers"], "category": flags.get("category"), "stack": flags.get("stack"), "history": hist})
 print(json.dumps(out, ensure_ascii=False))

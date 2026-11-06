@@ -40,7 +40,8 @@ async function list() {
   const rest = items.filter(i => !open.includes(i));
   const row = i => el('div', {className: 'card tap', onclick: () => { location.hash = i.id; }},
     el('div', {textContent: i.job.title || 'Vacante'}),
-    el('div', {className: 'soft', textContent: `${i.job.company || ''} · ${i.job.match ?? '-'}/10 · ${STATUS[i.status] || i.status}`}));
+    el('div', {className: 'soft', textContent: `${i.job.company || ''} · ${i.job.match ?? '-'}/10 · ${STATUS[i.status] || i.status}`}),
+    el('div', {className: 'soft', textContent: `${i.origin.channel} · ${i.origin.source} → ${i.origin.exit}`}));
   const views = [el('h1', {textContent: 'Relevo'})];
   if ('Notification' in window && Notification.permission !== 'granted') {
     const b = el('button', {className: 'main', textContent: 'Activar notificaciones'});
@@ -83,6 +84,9 @@ async function detail(id) {
     el('h1', {textContent: job.title || 'Vacante'}),
     el('div', {className: 'card'},
       el('div', {textContent: `${job.company || ''} · ${job.match ?? '-'}/10`}),
+      el('p', {className: 'soft', textContent: `Canal: ${item.origin.channel} · Fuente: ${item.origin.source}`}),
+      el('p', {className: 'soft', textContent: `Sale por: ${item.origin.exit}`}),
+      item.origin.location ? el('p', {className: 'soft', textContent: `Ubicación: ${item.origin.location}`}) : null,
       el('p', {className: 'soft', textContent: job.why || ''}),
       job.blockers ? el('p', {className: 'soft', textContent: 'Ojo: ' + job.blockers}) : null,
       d.reread ? el('p', {className: 'soft', textContent: 'Relectura: ' + d.reread.reason}) : null,
