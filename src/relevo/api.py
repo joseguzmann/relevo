@@ -29,6 +29,14 @@ fails = {"n": 0, "until": 0.0}
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
+@app.middleware("http")
+async def no_cache(request: Request, call_next):
+    """Otherwise the CDN in front keeps the old app for hours after a deploy."""
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 def check_passcode(given: str) -> bool:
     stored = os.environ.get("RELEVO_PASSCODE_HASH", "")
     if "$" not in stored:
