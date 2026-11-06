@@ -94,7 +94,7 @@ async function detail(id) {
       el('details', {}, el('summary', {textContent: 'Texto completo'}), el('pre', {textContent: job.description || ''})))];
   if ((d.history || []).length) views.push(el('h2', {textContent: 'Historial con esta empresa'}),
     el('div', {className: 'card'}, d.history.map(h => el('div', {className: 'soft', textContent: `#${h.number} ${h.title} · ${h.status}`}))));
-  if (item.reason && ['manual', 'failed'].includes(item.status)) views.push(el('div', {className: 'card soft', textContent: item.reason}));
+  if (item.reason && ['manual', 'failed', 'dropped'].includes(item.status)) views.push(el('div', {className: 'card soft', textContent: item.reason}));
   (d.unknown || []).length && views.push(el('h2', {textContent: 'Esto está en la página y no en los datos'}),
     ...d.unknown.map(u => el('label', {className: 'card opt'},
       el('input', {type: 'checkbox', checked: accepted.has(u), onchange: e => { e.target.checked ? accepted.add(u) : accepted.delete(u); }}),

@@ -52,8 +52,11 @@ def merge(form, drafted: list[dict], cv_path: str) -> list[dict]:
 
 
 def reread(job: dict, text: str) -> dict:
-    system = ("You check a job posting for one candidate in Quito, Ecuador. keep is true only if it can be done "
-              "fully remote from Ecuador and asks 4 years of experience or less, or states no years.")
+    system = ("You check a job posting for one candidate in Quito, Ecuador. keep is false only if the posting clearly "
+              "rules the candidate out: it is not remote, it excludes Ecuador or is limited to countries that leave "
+              "Ecuador out, or it asks more than 4 years of experience. If it is unclear, keep is true and the reason "
+              "states the doubt, because the candidate decides. A mention of one country is not an exclusion when the "
+              "posting also says LATAM or global.")
     return llm.ask(system, f"{job.get('title')} at {job.get('company')}\n\n{text}", llm.REREAD)
 
 
