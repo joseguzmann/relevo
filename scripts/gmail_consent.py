@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Run on your computer once: asks Google for a token that can only send mail.
-    python3 scripts/gmail_consent.py <client_id> <client_secret> <output.json>"""
+"""Run on your computer once: asks Google for a token that can only send mail, unless another scope is named.
+    python3 scripts/gmail_consent.py <client_id> <client_secret> <output.json> [scope]"""
 import http.server
 import json
 import secrets
@@ -10,7 +10,8 @@ import urllib.request
 import webbrowser
 
 client_id, client_secret, output = sys.argv[1:4]
-PORT, SCOPE = 8765, "https://www.googleapis.com/auth/gmail.send"
+PORT = 8765
+SCOPE = sys.argv[4] if len(sys.argv) > 4 else "https://www.googleapis.com/auth/gmail.send"
 redirect, state, got = f"http://127.0.0.1:{PORT}/", secrets.token_urlsafe(16), {}
 
 

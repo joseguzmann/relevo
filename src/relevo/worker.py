@@ -1,5 +1,6 @@
 """The loop: read candidates, prepare, notify. And the send, which only an approved item reaches."""
 import json
+import sys
 import logging
 import os
 import time
@@ -138,3 +139,23 @@ def loop(cfg: Config, store: Store, pem: str) -> None:
         except Exception:
             log.exception("tick failed")
         time.sleep(120)
+
+
+def one(cfg: Config, store: Store, job_id: int) -> None:
+    """Prepares one job on request. It skips the daily cap and quiet hours: a person asked for it."""
+    job = next((j for j in candidates(cfg) if j["id"] == job_id), None)
+    if job is None:
+        raise SystemExit(f"job {job_id} is not among the candidates")
+    if store.known(job_id):
+        raise SystemExit(f"job {job_id} is already in Relevo")
+    job["page_text"] = page_text(job.get("url", ""))
+    way, status, panel, reason = prepare.prepare(job, prepare.Kit(cfg.kit))
+    item = store.add(job_id, way, status, panel, reason)
+    print(f"item {item}: {way}, {status}. {reason}")
+    if item and status == "ready":
+        push.send(store, push.keys(cfg.data)[0], cfg.site, job.get("company") or "Relevo", job.get("title", "")[:90], item)
+
+
+if __name__ == "__main__":
+    settings = Config()
+    one(settings, Store(f"{settings.data}/relevo.db"), int(sys.argv[1]))

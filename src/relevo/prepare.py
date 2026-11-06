@@ -61,7 +61,7 @@ def prepare(job: dict, kit: Kit) -> tuple[str, str, dict, str]:
     """Returns (route, status, panel, reason). `manual` and `dropped` never reach a Send button."""
     way, target = route.decide(job)
     panel = {"job": {k: job.get(k) for k in ("id", "title", "company", "url", "why", "match", "blockers", "posted_at",
-                                             "stack", "description")},
+                                             "stack", "description", "sources", "location")},
              "history": job.get("history", []), "target": target}
     if way == "manual":
         return way, "manual", panel, "no form or email Relevo can use"
