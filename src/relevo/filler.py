@@ -127,7 +127,54 @@ async def _fill_manatal(page, f, value) -> bool:
     return await page.locator(f'input[name="{f.id}"]:checked').count() == len(values)
 
 
+BZ_FILL_JS = r"""([name, value]) => {
+  const els = [...document.querySelectorAll(`[name="${name}"]`)];
+  if (!els.length) return false;
+  const e = els[0], fire = x => ['input', 'change'].forEach(t => x.dispatchEvent(new Event(t, {bubbles: true})));
+  if (e.type === 'checkbox' && els.length === 1 && !Array.isArray(value)) {  // one consent box
+    if (e.checked !== (value === 'Yes')) e.click();
+    return e.checked === (value === 'Yes');
+  }
+  if (e.type === 'radio' || e.type === 'checkbox') {
+    const want = Array.isArray(value) ? value : [value];
+    for (const x of els) if (x.checked !== want.includes(x.value)) x.click();
+    return els.filter(x => x.checked).map(x => x.value).sort().join('|') === [...want].sort().join('|');
+  }
+  if (e.tagName === 'SELECT') {
+    const o = [...e.options].find(o => o.text.trim() === value);
+    if (!o) return false;
+    e.value = o.value; fire(e);
+    return e.selectedOptions[0]?.text.trim() === value;
+  }
+  e.value = value; fire(e);
+  return e.value === value;
+}"""
+BZ_SALARY_JS = r"""() => {  // the amount the form gets is per month, in the currency the job lists first
+  const period = document.querySelector('select[ng-model="candidate.salary.period"]');
+  if (!period) return false;
+  period.value = 'monthly';
+  period.dispatchEvent(new Event('change', {bubbles: true}));
+  return period.value === 'monthly';
+}"""
+
+
+async def _fill_breezy(page, f, value) -> bool:
+    if f.kind == "file":
+        await page.locator("#main-attachment").set_input_files(value)
+        for _ in range(15):
+            await page.wait_for_timeout(1000)
+            if value.rsplit("/", 1)[-1] in await page.locator("body").inner_text():
+                return True
+        return False
+    ok = await page.evaluate(BZ_FILL_JS, [f.id, value if isinstance(value, list) else str(value)])
+    if ok and f.id == "cSalary":
+        ok = await page.evaluate(BZ_SALARY_JS)
+    return ok
+
+
 async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
+    if ats == "breezy":
+        return await _fill_breezy(page, f, value)
     if ats == "greenhouse":
         return await _fill_greenhouse(page, f, value)
     if ats == "manatal":
@@ -208,6 +255,13 @@ async def _submit(page, result: Result, after_shot: str, seconds: int, code_file
     page.on("request", sent)
     page.on("response", note)
     button = page.locator("form button[type=submit]").last if ats == "manatal" else page.get_by_role("button", name=SUBMIT)
+    if ats == "breezy":  # the form comes in sections; Continue checks each one before the next shows
+        more = page.get_by_role("button", name="Continue", exact=True)
+        for _ in range(5):
+            if await button.is_visible() or not await more.is_visible():
+                break
+            await more.click()
+            await page.wait_for_timeout(1200)
     await button.click()
     result.submitted = True
     text, after_reply, tried_code = "", 0, False
@@ -250,7 +304,22 @@ MN_UNKNOWN_JS = r"""(ids) => {
 }"""
 
 
+BZ_UNKNOWN_JS = r"""(ids) => {
+  const skip = /^(hp_|smsConsent$|salaryCurrency$|cHeadline$|cResume$)/, out = [];
+  for (const e of document.querySelectorAll('form input, form textarea, form select')) {
+    if (!e.name || e.type === 'hidden' || e.type === 'file' || skip.test(e.name) || ids.includes(e.name)) continue;
+    if (e.closest('[ng-show*="eeoc"], .eeoc, .education, .work-history, [class*=experience]')) continue;
+    let h = null;
+    for (let n = e; n && !h; n = n.parentElement) h = n.querySelector(':scope > h3');
+    out.push(((h && h.innerText) || e.placeholder || e.name).replace(/\s+/g, ' ').trim().slice(0, 200));
+  }
+  return [...new Set(out)];
+}"""
+
+
 async def _unknown(page, form: Form) -> list:
+    if form.ats == "breezy":
+        return await page.evaluate(BZ_UNKNOWN_JS, [f.id for f in form.fields])
     if form.ats == "manatal":
         return await page.evaluate(MN_UNKNOWN_JS, [f.id for f in form.fields])
     if form.ats == "greenhouse":

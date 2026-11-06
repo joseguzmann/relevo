@@ -1,0 +1,398 @@
+{
+ "urrly": {
+  "gdprEnabled": null,
+  "eeocEnabled": null,
+  "questions": null,
+  "showSmsConsent": "true",
+  "position": {
+   "_id": "52a8d92b1010",
+   "name": "AI Automation Engineer (Remote – LATAM & Philippines)",
+   "friendly_id": "52a8d92b1010-ai-automation-engineer-remote-latam-philippines",
+   "state": "published",
+   "application_form": {
+    "name": "required",
+    "email_address": "required",
+    "phone_number": "required",
+    "resume": "required",
+    "work_history": "optional",
+    "education": "optional",
+    "cover_letter": "optional",
+    "salary": "hidden",
+    "preferred_location": "hidden",
+    "address": "hidden"
+   },
+   "locations": [
+    {
+     "country": {
+      "name": "Philippines",
+      "id": "PH"
+     },
+     "city": "Manila",
+     "primary": true,
+     "is_remote": true,
+     "remote_details": {
+      "value": "remote",
+      "label": "Fully remote, no location restrictions"
+     },
+     "name": "Manila, PH",
+     "id": "522e4d248ea4"
+    }
+   ]
+  }
+ },
+ "inallmedia": {
+  "gdprEnabled": null,
+  "eeocEnabled": null,
+  "questions": [
+   {
+    "_id": 1747783397549,
+    "questions": [
+     {
+      "text": "Where are you currently based (City, Country)?",
+      "body": "",
+      "type": {
+       "id": "text",
+       "name": "Text"
+      },
+      "required": true,
+      "_id": "09fc8bf304f5",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "How many years of relevant work experience do you have for this role?",
+      "options": [
+       {
+        "text": "Less than 1 year"
+       },
+       {
+        "text": "1–3 years"
+       },
+       {
+        "text": "3–5 years"
+       },
+       {
+        "text": "5–8 years"
+       },
+       {
+        "text": "8+ years"
+       }
+      ],
+      "type": {
+       "id": "dropdown",
+       "name": "Dropdown List"
+      },
+      "body": "",
+      "required": true,
+      "_id": "49c32d7a31db",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "What is your expected hourly rate in USD?",
+      "body": "",
+      "type": {
+       "id": "text",
+       "name": "Text"
+      },
+      "required": true,
+      "_id": "f07c22ca5217",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "Do you have a notice period at your current job before being able to start a new role?",
+      "body": "",
+      "type": {
+       "id": "multiplechoice",
+       "name": "Multiple Choice"
+      },
+      "options": [
+       {
+        "text": "Yes"
+       },
+       {
+        "text": "No"
+       }
+      ],
+      "required": true,
+      "_id": "4738997a1a51",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "body": "",
+      "text": "What is your earliest possible start date?",
+      "type": {
+       "id": "date",
+       "name": "Date"
+      },
+      "required": true,
+      "_id": "619e2029e440",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "Would you be interested in a long-term full-time (40 hours/week, 8 hours/day) vendor contracting arrangement?",
+      "options": [
+       {
+        "text": "Yes"
+       },
+       {
+        "text": "No"
+       }
+      ],
+      "type": {
+       "id": "multiplechoice",
+       "name": "Multiple Choice"
+      },
+      "required": true,
+      "_id": "0ac0bdec0855",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "Do you have any planned time off in the next 3 months? If yes, please specify the dates.",
+      "body": "",
+      "required": true,
+      "type": {
+       "id": "text",
+       "name": "Text"
+      },
+      "_id": "133ad72e7fad",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "Do you have a personal computer for work? If so, could you share its specifications (RAM, processor, operating system)?",
+      "type": {
+       "id": "text",
+       "name": "Text"
+      },
+      "required": true,
+      "_id": "1d9369f06858",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "Are you currently participating in other recruitment processes? If yes, how advanced are you in them?",
+      "body": "",
+      "type": {
+       "id": "text",
+       "name": "Text"
+      },
+      "required": true,
+      "_id": "70e872e680e3",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "As a vendor, In All Media pays within the last week of the month following the one in which work was completed. Does this timeline work for you?",
+      "body": "",
+      "options": [
+       {
+        "text": "Yes"
+       },
+       {
+        "text": "No"
+       }
+      ],
+      "type": {
+       "id": "multiplechoice",
+       "name": "Multiple Choice"
+      },
+      "required": true,
+      "_id": "a70b03022da5",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "Which of the following payment methods do you prefer?",
+      "options": [
+       {
+        "text": "Bank Wire Transfer"
+       },
+       {
+        "text": "Payoneer"
+       },
+       {
+        "text": "Wise"
+       },
+       {
+        "text": "Husky"
+       },
+       {
+        "text": "Other"
+       }
+      ],
+      "type": {
+       "id": "dropdown",
+       "name": "Dropdown List"
+      },
+      "required": false,
+      "_id": "fed78dc8def1",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "text": "Where did you learn about this opportunity?",
+      "body": "",
+      "options": [
+       {
+        "text": "LinkedIn"
+       },
+       {
+        "text": "Someone from In All Media contacted me"
+       },
+       {
+        "text": "Other"
+       }
+      ],
+      "type": {
+       "id": "multiplechoice",
+       "name": "Multiple Choice"
+      },
+      "_id": "193c428c5089",
+      "questionnaire_id": "1f540a73f4fc"
+     },
+     {
+      "body": "",
+      "text": "Please record a short (about 60 seconds) audio introduction in English using https://vocaroo.com. Once you’re done, simply copy the Vocaroo link here",
+      "type": {
+       "id": "text",
+       "name": "Text"
+      },
+      "_id": "6aa837aa7689",
+      "questionnaire_id": "1f540a73f4fc"
+     }
+    ],
+    "description": ""
+   }
+  ],
+  "showSmsConsent": "true",
+  "position": {
+   "_id": "31d5583bb722",
+   "name": "2121 Backend Software Engineer (Shared Platforms)",
+   "friendly_id": "31d5583bb722-2121-backend-software-engineer-shared-platforms",
+   "state": "published",
+   "application_form": {
+    "name": "required",
+    "headline": "optional",
+    "summary": "optional",
+    "profile_photo": "optional",
+    "address": "required",
+    "salary": "required",
+    "email_address": "required",
+    "phone_number": "required",
+    "resume": "required",
+    "work_history": "optional",
+    "education": "required",
+    "cover_letter": "hidden",
+    "preferred_location": "optional",
+    "questionnaire_in_experience": true
+   },
+   "locations": [
+    {
+     "country": {
+      "name": "Costa Rica",
+      "id": "CR"
+     },
+     "primary": true,
+     "is_remote": true,
+     "remote_details": {
+      "value": "remote",
+      "label": "Fully remote, no location restrictions"
+     },
+     "name": "Costa Rica",
+     "id": "b0b067723d20"
+    },
+    {
+     "country": {
+      "name": "Peru",
+      "id": "PE"
+     },
+     "primary": false,
+     "is_remote": true,
+     "remote_details": {
+      "value": "remote",
+      "label": "Fully remote, no location restrictions"
+     },
+     "name": "Peru",
+     "id": "aeeb4f811475"
+    },
+    {
+     "country": {
+      "name": "Guatemala",
+      "id": "GT"
+     },
+     "primary": false,
+     "is_remote": true,
+     "remote_details": {
+      "value": "remote",
+      "label": "Fully remote, no location restrictions"
+     },
+     "name": "Guatemala",
+     "id": "6920fe81cd61"
+    },
+    {
+     "country": {
+      "name": "Colombia",
+      "id": "CO"
+     },
+     "primary": false,
+     "is_remote": true,
+     "remote_details": {
+      "value": "remote",
+      "label": "Fully remote, no location restrictions"
+     },
+     "name": "Colombia",
+     "id": "4420a291c4d7"
+    },
+    {
+     "country": {
+      "name": "Ecuador",
+      "id": "EC"
+     },
+     "primary": false,
+     "is_remote": true,
+     "remote_details": {
+      "value": "remote",
+      "label": "Fully remote, no location restrictions"
+     },
+     "name": "Ecuador",
+     "id": "712cc727ab7d"
+    }
+   ]
+  }
+ },
+ "cogent": {
+  "gdprEnabled": true,
+  "eeocEnabled": null,
+  "questions": null,
+  "showSmsConsent": "false",
+  "position": {
+   "_id": "da9ab38c15b5",
+   "name": "AI Engineer",
+   "friendly_id": "da9ab38c15b5-ai-engineer",
+   "state": "published",
+   "application_form": {
+    "name": "required",
+    "headline": "optional",
+    "summary": "optional",
+    "profile_photo": "optional",
+    "address": "hidden",
+    "salary": "hidden",
+    "email_address": "required",
+    "phone_number": "optional",
+    "resume": "optional",
+    "work_history": "optional",
+    "education": "optional",
+    "cover_letter": "optional",
+    "preferred_location": "hidden",
+    "questionnaire_in_experience": true,
+    "gdpr": "required"
+   },
+   "locations": [
+    {
+     "country": {
+      "name": "Japan",
+      "id": "JP"
+     },
+     "primary": true,
+     "is_remote": false,
+     "name": "Japan",
+     "id": "b7469aabe7b9"
+    }
+   ]
+  }
+ }
+}

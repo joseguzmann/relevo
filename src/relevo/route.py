@@ -45,6 +45,6 @@ def origin(job: dict, way: str, target: str = "") -> dict:
         ats = next((name for key, name in ATS.items() if key in sources or key in url), "")
         board = next((BOARDS.get(s, s) for s in sources if not s.startswith("linkedin")), "")
         channel, source = ("ATS", ats) if ats else ("Bolsa", board or url.split("/")[2] if "//" in url else board)
-    exits = {"ashby": "Formulario de Ashby", "greenhouse": "Formulario de Greenhouse", "manatal": "Formulario de Manatal", "email": f"Correo a {target}",
+    exits = {"ashby": "Formulario de Ashby", "greenhouse": "Formulario de Greenhouse", "manatal": "Formulario de Manatal", "breezy": "Formulario de Breezy", "email": f"Correo a {target}",
              "manual": "A mano"}
     return {"channel": channel, "source": source, "exit": exits.get(way, way), "location": job.get("location") or ""}
