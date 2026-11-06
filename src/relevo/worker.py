@@ -70,6 +70,8 @@ def tick(cfg: Config, store: Store, kit: prepare.Kit, pem: str) -> None:
 
 
 def outbox(cfg: Config, item: dict, material: str) -> None:
+    if item["job_id"] < 0:  # a test item is not an application
+        return
     folder = Path(cfg.data) / "outbox"
     folder.mkdir(exist_ok=True)
     panel = item["data"]
