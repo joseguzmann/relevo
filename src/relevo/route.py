@@ -26,7 +26,7 @@ def decide(job: dict) -> tuple[str, str]:
     return "manual", job.get("url", "")
 
 
-ATS = {"ashby": "Ashby", "greenhouse": "Greenhouse", "lever": "Lever", "workable": "Workable", "bamboohr": "BambooHR",
+ATS = {"ashby": "Ashby", "greenhouse": "Greenhouse", "manatal": "Manatal", "lever": "Lever", "workable": "Workable", "bamboohr": "BambooHR",
        "breezy": "Breezy", "recruitee": "Recruitee", "smartrecruiters": "SmartRecruiters", "teamtailor": "Teamtailor",
        "workday": "Workday"}
 BOARDS = {"computrabajo": "Computrabajo", "freehire": "FreeHire", "getonbrd": "Get on Board", "gmail": "Alerta por correo",
@@ -45,6 +45,6 @@ def origin(job: dict, way: str, target: str = "") -> dict:
         ats = next((name for key, name in ATS.items() if key in sources or key in url), "")
         board = next((BOARDS.get(s, s) for s in sources if not s.startswith("linkedin")), "")
         channel, source = ("ATS", ats) if ats else ("Bolsa", board or url.split("/")[2] if "//" in url else board)
-    exits = {"ashby": "Formulario de Ashby", "greenhouse": "Formulario de Greenhouse", "email": f"Correo a {target}",
+    exits = {"ashby": "Formulario de Ashby", "greenhouse": "Formulario de Greenhouse", "manatal": "Formulario de Manatal", "email": f"Correo a {target}",
              "manual": "A mano"}
     return {"channel": channel, "source": source, "exit": exits.get(way, way), "location": job.get("location") or ""}

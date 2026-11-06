@@ -104,9 +104,34 @@ async def _fill_greenhouse(page, f, value) -> bool:
     raise ValueError(f"cannot fill {f.kind}")
 
 
+async def _fill_manatal(page, f, value) -> bool:
+    if f.id == "terms_and_condition" or (f.kind == "yes_no" and not f.options):
+        box = page.locator(f'input[name="{f.id}"]').first
+        await box.set_checked(value == "Yes")
+        return await box.is_checked() == (value == "Yes")
+    box = page.locator(f'[id="field{f.id}"]')
+    if f.kind in ("text", "email", "number", "long_text"):
+        await box.fill(str(value))
+        return await box.input_value() == str(value)
+    if f.kind == "file":
+        await box.set_input_files(value)
+        await page.wait_for_timeout(1000)
+        return value.rsplit("/", 1)[-1] in await page.locator("form").inner_text()
+    values = value if isinstance(value, list) else [value]
+    if await box.count():  # a select
+        await box.select_option(label=values, force=True)
+        chosen = await box.evaluate("e => [...e.selectedOptions].map(o => o.text.trim())")
+        return sorted(chosen) == sorted(values)
+    for v in values:  # radios or checkboxes
+        await page.locator(f'input[name="{f.id}"][value="{v}"]').check(force=True)
+    return await page.locator(f'input[name="{f.id}"]:checked').count() == len(values)
+
+
 async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
     if ats == "greenhouse":
         return await _fill_greenhouse(page, f, value)
+    if ats == "manatal":
+        return await _fill_manatal(page, f, value)
     entry = page.locator('[class*="fieldEntry"]').filter(has_text=f.label).first
     if f.kind in ("text", "email", "number", "long_text"):
         box = entry.locator("input, textarea").first
@@ -161,7 +186,8 @@ async def _enter_code(page, code: str) -> None:
     await page.wait_for_timeout(500)
 
 
-async def _submit(page, result: Result, after_shot: str, seconds: int, code_file: str = "", asked=None) -> None:
+async def _submit(page, result: Result, after_shot: str, seconds: int, code_file: str = "", asked=None,
+                  ats: str = "ashby") -> None:
     """Clicks once, then waits for the answer and keeps the evidence, whatever it turns out to be."""
     replies = []
 
@@ -181,7 +207,7 @@ async def _submit(page, result: Result, after_shot: str, seconds: int, code_file
 
     page.on("request", sent)
     page.on("response", note)
-    button = page.get_by_role("button", name=SUBMIT)
+    button = page.locator("form button[type=submit]").last if ats == "manatal" else page.get_by_role("button", name=SUBMIT)
     await button.click()
     result.submitted = True
     text, after_reply, tried_code = "", 0, False
@@ -212,7 +238,21 @@ async def _submit(page, result: Result, after_shot: str, seconds: int, code_file
         await page.screenshot(path=after_shot, full_page=True)
 
 
+MN_UNKNOWN_JS = r"""(ids) => {
+  const out = [];
+  for (const e of document.querySelectorAll('form input, form textarea, form select')) {
+    const id = e.name || e.id;
+    if (!id || e.type === 'hidden' || ids.includes(id) || ids.includes(id.replace(/^field/, '')) || !e.offsetParent) continue;
+    const label = e.closest('.form-group')?.querySelector('label')?.innerText || e.placeholder || id;
+    out.push(label.replace(/\s+/g, ' ').trim().slice(0, 200));
+  }
+  return [...new Set(out)];
+}"""
+
+
 async def _unknown(page, form: Form) -> list:
+    if form.ats == "manatal":
+        return await page.evaluate(MN_UNKNOWN_JS, [f.id for f in form.fields])
     if form.ats == "greenhouse":
         return await page.evaluate(GH_UNKNOWN_JS, [f.id for f in form.fields])
     return await page.evaluate(UNKNOWN_JS, [f.label for f in form.fields])
@@ -243,7 +283,7 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False, accept
                 result.unknown.remove(text)
         await page.screenshot(path=shot, full_page=True)
         if submit and not result.failed and not result.unknown:
-            await _submit(page, result, after_shot, seconds, code_file, asked)
+            await _submit(page, result, after_shot, seconds, code_file, asked, form.ats)
         await browser.close()
     return result
 
@@ -266,7 +306,8 @@ def scan(form: Form) -> list:
 
 def looks_sent(text: str) -> bool:
     low = text.lower()
-    return "success" in low or "thank you for applying" in low or "application was submitted" in low
+    return any(k in low for k in ("success", "thank you for applying", "application was submitted",
+                                   "application has been submitted", "application has been received", "thank you for your application"))
 
 
 def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (), after_shot: str = "",

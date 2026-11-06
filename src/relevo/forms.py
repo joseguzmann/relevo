@@ -1,8 +1,8 @@
 """Which ATS a link belongs to, and its form."""
-from relevo import ashby, greenhouse
+from relevo import ashby, greenhouse, manatal
 
-READERS = {"ashby": ashby, "greenhouse": greenhouse}
-NAMES = {"ashby": "Ashby", "greenhouse": "Greenhouse"}
+READERS = {"ashby": ashby, "greenhouse": greenhouse, "manatal": manatal}
+NAMES = {"ashby": "Ashby", "greenhouse": "Greenhouse", "manatal": "Manatal"}
 
 
 def find(*texts: str) -> tuple[str, str]:
