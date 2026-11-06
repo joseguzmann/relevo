@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from relevo import push, worker
@@ -31,7 +31,6 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 @app.middleware("http")
 async def no_cache(request: Request, call_next):
-    """Otherwise the CDN in front keeps the old app for hours after a deploy."""
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-cache"
     return response
@@ -178,7 +177,9 @@ def start():
 
 @app.get("/")
 def index():
-    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+    # The CDN keeps .js and .css for hours whatever we send, so each version gets its own URL.
+    version = hashlib.sha256((WEB / "app.js").read_bytes() + (WEB / "app.css").read_bytes()).hexdigest()[:10]
+    return HTMLResponse((WEB / "index.html").read_text().replace("?v=2", f"?v={version}"))
 
 
 @app.get("/sw.js")
