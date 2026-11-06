@@ -92,6 +92,10 @@ def form_material(panel: dict, ats: str = "") -> str:
     return f"{forms.NAMES.get(ats, 'ATS')} form by Relevo: " + "; ".join(f"{f['label'][:40]}={f['value']}" for f in panel["fields"] if f["kind"] != "file")
 
 
+def code_file(cfg: Config, item_id: int) -> Path:
+    return Path(cfg.data) / f"code-{item_id}.txt"
+
+
 def evidence(cfg: Config, item_id: int) -> Path:
     """Every request the click sent and what came back: the record of what actually went out."""
     return Path(cfg.data) / f"sent-{item_id}.json"
@@ -129,8 +133,13 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             return
         answers = {f["id"]: f["value"] for f in panel["fields"]}
         shot = str(Path(cfg.data) / f"shot-{item_id}.png")
+        def asked():
+            store.finish(item_id, "code", "the ATS emailed a code to confirm the application")
+            push.send(store, push.keys(cfg.data)[0], cfg.site, "Falta el código",
+                      f"{panel.get('job', {}).get('company', '')}: escribe el código que llegó al correo", item_id)
+
         result = filler.fill(form, answers, shot, submit=True, accepted=panel.get("accepted_unknown", []),
-                             after_shot=str(after_shot(cfg, item_id)))
+                             after_shot=str(after_shot(cfg, item_id)), code_file=str(code_file(cfg, item_id)), asked=asked)
         evidence(cfg, item_id).write_text(json.dumps(result.requests, ensure_ascii=False, indent=1))
         if result.failed or (result.unknown and not result.submitted):
             store.finish(item_id, "failed", f"not sent: failed {result.failed}, unknown {result.unknown}")

@@ -2,6 +2,7 @@
 import asyncio
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from playwright.async_api import async_playwright
 
@@ -136,7 +137,31 @@ async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
     raise ValueError(f"cannot fill {f.kind}")
 
 
-async def _submit(page, result: Result, after_shot: str, seconds: int) -> None:
+CODE_ASKED = re.compile(r"verification code was sent|enter the \d+-character code", re.I)
+
+
+async def _wait_code(code_file: str, minutes: int = 15) -> str:
+    path = Path(code_file)
+    for _ in range(minutes * 30):
+        if path.exists():
+            code = path.read_text().strip()
+            path.unlink()
+            return code
+        await asyncio.sleep(2)
+    return ""
+
+
+async def _enter_code(page, code: str) -> None:
+    boxes = page.get_by_text("Security code", exact=True).locator("xpath=following::input[not(@type='hidden')]")
+    if await boxes.count() >= len(code) > 1:
+        for i, ch in enumerate(code):
+            await boxes.nth(i).fill(ch)
+    else:
+        await boxes.first.fill(code)
+    await page.wait_for_timeout(500)
+
+
+async def _submit(page, result: Result, after_shot: str, seconds: int, code_file: str = "", asked=None) -> None:
     """Clicks once, then waits for the answer and keeps the evidence, whatever it turns out to be."""
     replies = []
 
@@ -159,12 +184,25 @@ async def _submit(page, result: Result, after_shot: str, seconds: int) -> None:
     button = page.get_by_role("button", name=SUBMIT)
     await button.click()
     result.submitted = True
-    text, after_reply = "", 0
+    text, after_reply, tried_code = "", 0, False
     for _ in range(seconds):
         await page.wait_for_timeout(1000)
         text = await page.locator("body").inner_text()
         result.confirmed = await button.count() == 0 and looks_sent(text)
         after_reply += 1 if replies else 0
+        if not result.confirmed and code_file and not tried_code and CODE_ASKED.search(text):
+            tried_code = True  # the ATS emailed a code: the page stays open until the person types it
+            if asked:
+                asked()
+            code = await _wait_code(code_file)
+            if not code:
+                result.confirmation = "no code arrived in 15 minutes"
+                break
+            await _enter_code(page, code)
+            replies.clear()
+            after_reply = 0
+            await button.click()
+            continue
         if result.confirmed or after_reply >= 8:
             break
     alerts = await page.locator('[role=alert], [class*="error" i]').all_inner_texts()
@@ -181,7 +219,7 @@ async def _unknown(page, form: Form) -> list:
 
 
 async def run(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (),
-              after_shot: str = "", seconds: int = 45) -> Result:
+              after_shot: str = "", seconds: int = 45, code_file: str = "", asked=None) -> Result:
     if form.missing(answers) or form.invalid(answers):
         raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
     result = Result()
@@ -205,7 +243,7 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False, accept
                 result.unknown.remove(text)
         await page.screenshot(path=shot, full_page=True)
         if submit and not result.failed and not result.unknown:
-            await _submit(page, result, after_shot, seconds)
+            await _submit(page, result, after_shot, seconds, code_file, asked)
         await browser.close()
     return result
 
@@ -231,5 +269,6 @@ def looks_sent(text: str) -> bool:
     return "success" in low or "thank you for applying" in low or "application was submitted" in low
 
 
-def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (), after_shot: str = "") -> Result:
-    return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot))
+def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (), after_shot: str = "",
+         code_file: str = "", asked=None) -> Result:
+    return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot, 45, code_file, asked))

@@ -12,7 +12,7 @@ const api = async (path, opts = {}) => {
   return r.json();
 };
 const STATE = {ready: 'listo', confirm: 'confirmar', missing: 'falta'};
-const STATUS = {ready: 'Para enviar', sending: 'Enviando…', sent: 'Enviada', failed: 'No se envió', unclear: 'Revisar', manual: 'Manual', dropped: 'Descartada'};
+const STATUS = {ready: 'Para enviar', code: 'Falta el código', sending: 'Enviando…', sent: 'Enviada', failed: 'No se envió', unclear: 'Revisar', manual: 'Manual', dropped: 'Descartada'};
 
 function login() {
   const code = el('input', {type: 'password', placeholder: 'Clave', autocomplete: 'current-password'});
@@ -36,7 +36,7 @@ async function enablePush(btn) {
 
 async function list() {
   const items = await api('/items');
-  const open = items.filter(i => ['ready', 'failed', 'unclear', 'sending'].includes(i.status));
+  const open = items.filter(i => ['ready', 'failed', 'unclear', 'sending', 'code'].includes(i.status));
   const rest = items.filter(i => !open.includes(i));
   const row = i => el('div', {className: 'card tap', onclick: () => { location.hash = i.id; }},
     i.warning ? el('div', {className: 'tag confirm', textContent: i.warning.discard ? '⚠️ Posible descarte' : '⚠️ Con duda'}) : null,
@@ -143,6 +143,17 @@ async function detail(id) {
     working(busy, 'Enviando…');
     views.push(el('div', {className: 'bar'}, el('div', {}, msg, busy)));
     poll(id, msg);
+  } else if (item.status === 'code') {
+    const input = el('input', {type: 'text', placeholder: '8 caracteres', autocomplete: 'one-time-code', autocapitalize: 'off', maxLength: 12});
+    const msg = el('div', {className: 'soft'});
+    const go = el('button', {className: 'main', textContent: 'Enviar código', onclick: async () => {
+      working(go, 'Enviando…');
+      try { await api(`/items/${id}/code`, {method: 'POST', body: JSON.stringify({code: input.value})}); poll(id, msg); }
+      catch (e) { go.disabled = false; go.textContent = 'Enviar código'; msg.className = 'soft missing'; msg.textContent = e.body?.detail || 'No se pudo'; }
+    }});
+    views.push(el('h2', {textContent: 'Código de verificación'}), el('div', {className: 'card'},
+      el('p', {textContent: 'El formulario pide el código que llegó a tu correo. La página sigue abierta unos 15 minutos.'}),
+      input), el('div', {className: 'bar'}, el('div', {}, msg, go)));
   } else if (item.status === 'unclear') {
     const answer = sent => async () => {
       await api(`/items/${id}/resolve`, {method: 'POST', body: JSON.stringify({sent})});

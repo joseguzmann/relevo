@@ -162,6 +162,18 @@ def shot(item_id: int):
     return FileResponse(path, media_type="image/png")
 
 
+@app.post("/api/items/{item_id}/code", dependencies=[Depends(session)])
+async def code(item_id: int, request: Request):
+    if need(item_id)["status"] != "code":
+        raise HTTPException(409, "this one is not waiting for a code")
+    value = "".join(ch for ch in str((await request.json()).get("code", "")) if ch.isalnum())
+    if not 4 <= len(value) <= 12:
+        raise HTTPException(400, "Ese código no parece válido")
+    worker.code_file(cfg, item_id).write_text(value)
+    store.finish(item_id, "sending", "code entered, waiting for the ATS")
+    return {"ok": True}
+
+
 @app.get("/api/items/{item_id}/sent", dependencies=[Depends(session)])
 def sent(item_id: int):
     path = worker.evidence(cfg, need(item_id)["id"])
