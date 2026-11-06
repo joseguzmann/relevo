@@ -195,8 +195,10 @@ async def _fill_bamboohr(page, f, value) -> bool:
     if f.kind == "single_choice":  # radios; a multi question keeps the option id as value, so pick by label
         await group.locator("xpath=ancestor::label").filter(has_text=re.compile(rf"^\s*{re.escape(value)}\s*$")).first.click()
         return await page.locator(f'input[name="{f.id}"]:checked').locator("xpath=ancestor::label").inner_text() == value
-    box = page.locator(f'[name="{f.id}"]').first
+    box = page.get_by_label("Date Available").first if f.id == "dateAvailable" else page.locator(f'[name="{f.id}"]').first
     await box.fill(str(value))
+    if f.id == "dateAvailable":
+        await box.press("Escape")  # close the calendar it opens
     return await box.input_value() == str(value)
 
 
