@@ -87,7 +87,7 @@ async def _fill_greenhouse(page, f, value) -> bool:
         await page.wait_for_timeout(2500)
         await page.get_by_role("option").filter(has_text=city).first.click()
         await page.wait_for_timeout(500)
-        shown = await loc.evaluate("e => e.closest('[class*=select]')?.innerText || e.value")
+        shown = await loc.evaluate("e => (e.closest('[class*=select]')?.innerText || '') + ' ' + e.value")
         return city.lower() in shown.lower()
     if f.kind in ("single_choice", "multi_choice"):
         values = value if isinstance(value, list) else [value]
