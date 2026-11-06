@@ -177,6 +177,7 @@ async function detail(id) {
         el('pre', {className: 'soft', textContent: r.body || '(sin cuerpo)'}))) : [el('p', {className: 'soft', textContent: 'No hay registro de esta postulación.'})]));
     }}, el('summary', {textContent: 'Lo que se envió'}), box));
   }
+  if (!['ready', 'code'].includes(item.status)) views.push(el('button', {className: 'back bottom', textContent: '‹ Volver a la lista', onclick: () => { location.hash = ''; }}));
   root.replaceChildren(...views);
 }
 
