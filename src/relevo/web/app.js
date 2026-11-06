@@ -90,7 +90,7 @@ async function detail(id) {
       el('details', {}, el('summary', {textContent: 'Texto completo'}), el('pre', {textContent: job.description || ''})))];
   if ((d.history || []).length) views.push(el('h2', {textContent: 'Historial con esta empresa'}),
     el('div', {className: 'card'}, d.history.map(h => el('div', {className: 'soft', textContent: `#${h.number} ${h.title} · ${h.status}`}))));
-  if (item.reason) views.push(el('div', {className: 'card soft', textContent: item.reason}));
+  if (item.reason && ['manual', 'failed'].includes(item.status)) views.push(el('div', {className: 'card soft', textContent: item.reason}));
   (d.unknown || []).length && views.push(el('h2', {textContent: 'Esto está en la página y no en los datos'}),
     ...d.unknown.map(u => el('label', {className: 'card opt'},
       el('input', {type: 'checkbox', checked: accepted.has(u), onchange: e => { e.target.checked ? accepted.add(u) : accepted.delete(u); }}),
@@ -107,34 +107,61 @@ async function detail(id) {
   if (item.status === 'manual') views.push(el('p', {className: 'soft', textContent: 'Esta se postula a mano.'}));
   const save = () => api('/items/' + id, {method: 'PUT', body: JSON.stringify({fields: changes, email: mail, accepted_unknown: [...accepted]})});
   if (['ready', 'failed'].includes(item.status)) {
-    const msg = el('div', {className: 'soft missing'});
+    const msg = el('div', {className: 'soft'});
     const send = el('button', {className: 'main', textContent: item.route === 'email' ? 'Enviar correo' : 'Postular', onclick: async () => {
-      send.disabled = true; msg.textContent = '';
+      const label = send.textContent;
+      working(send, item.route === 'email' ? 'Enviando…' : 'Postulando…');
+      msg.className = 'soft'; msg.textContent = '';
       try {
         await save();
         await api(`/items/${id}/send`, {method: 'POST'});
-        poll(id);
+        drop.remove();
+        poll(id, msg);
       } catch (e) {
-        send.disabled = false;
+        send.disabled = false; send.textContent = label;
         const m = e.body?.detail?.missing;
-        msg.textContent = m ? 'Falta: ' + m.join(' · ') : (e.body?.detail || 'No se pudo enviar');
+        msg.className = 'soft missing';
+        msg.textContent = m ? 'Falta: ' + m.join(' · ') : (typeof e.body?.detail === 'string' ? e.body.detail : 'No se pudo enviar');
       }
     }});
-    views.push(el('p'), el('button', {textContent: 'Descartar', onclick: async () => {
+    const drop = el('button', {textContent: 'Descartar', onclick: async () => {
       await api(`/items/${id}/discard`, {method: 'POST'}); location.hash = '';
-    }}), el('div', {className: 'bar'}, el('div', {}, msg, send)));
+    }});
+    views.push(el('p'), drop, el('div', {className: 'bar'}, el('div', {}, msg, send)));
+  } else if (item.status === 'sending') {
+    const msg = el('div', {className: 'soft'}), busy = el('button', {className: 'main'});
+    working(busy, 'Enviando…');
+    views.push(el('div', {className: 'bar'}, el('div', {}, msg, busy)));
+    poll(id, msg);
+  } else if (item.status === 'unclear') {
+    const answer = sent => async () => {
+      await api(`/items/${id}/resolve`, {method: 'POST', body: JSON.stringify({sent})});
+      detail(id);
+    };
+    const img = el('img', {className: 'shot', src: `/api/items/${id}/shot`, alt: 'Pantalla después de enviar', onerror: () => img.remove()});
+    views.push(el('h2', {textContent: 'Sin confirmación'}), el('div', {className: 'card'},
+      el('p', {textContent: 'Relevo tocó enviar, pero la página no confirmó. Mira si llegó el correo de acuse antes de decidir.'}),
+      img, el('details', {}, el('summary', {textContent: 'Lo que respondió la página'}), el('pre', {textContent: item.reason || ''})),
+      el('p'), el('button', {textContent: 'Sí se envió', onclick: answer(true)}), ' ',
+      el('button', {textContent: 'No se envió', onclick: answer(false)})));
   } else views.push(el('div', {className: 'card', textContent: STATUS[item.status] || item.status}));
   root.replaceChildren(...views);
 }
 
-async function poll(id) {
-  root.replaceChildren(el('h1', {textContent: 'Enviando…'}), el('p', {className: 'soft', textContent: 'No cierres todavía.'}));
-  for (let i = 0; i < 40; i++) {
+function working(btn, text) {
+  btn.disabled = true;
+  btn.replaceChildren(el('span', {className: 'spin'}), text);
+}
+
+async function poll(id, msg) {
+  msg.textContent = 'Tarda hasta 2 minutos. Sigue aunque cierres la app.';
+  for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 3000));
-    const it = await api('/items/' + id);
-    if (it.status !== 'sending') return detail(id);
+    if (location.hash.slice(1) !== String(id)) return;
+    const it = await api('/items/' + id).catch(() => null);
+    if (it && it.status !== 'sending') return detail(id);
   }
-  detail(id);
+  msg.textContent = 'Sigue en proceso. Vuelve a abrirla en un momento.';
 }
 
 async function route() {

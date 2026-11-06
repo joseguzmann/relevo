@@ -14,3 +14,5 @@ button.main{background:var(--brand);color:#fff;width:100%;padding:15px}@media (p
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 16px calc(env(safe-area-inset-bottom) + 10px)}
 .bar div{max-width:640px;margin:auto}.back{background:none;padding:6px 0;color:var(--brand)}pre{white-space:pre-wrap;font:inherit;margin:0}
 details summary{cursor:pointer;color:var(--brand)}
+.spin{display:inline-block;width:16px;height:16px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}button:disabled{opacity:.75}.shot{display:block;width:100%;border:1px solid var(--line);border-radius:8px;margin-bottom:10px}

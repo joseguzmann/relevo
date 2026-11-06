@@ -128,6 +128,8 @@ def send(item_id: int):
     it = need(item_id)
     if it["route"] == "manual":
         raise HTTPException(400, "this one has no way out from here")
+    if it["route"] == "email" and not Path(cfg.token).exists():
+        raise HTTPException(503, "Gmail todavía no está conectado. No se envió nada.")
     missing = blockers(it)
     if missing:
         raise HTTPException(400, {"missing": missing})
@@ -135,6 +137,23 @@ def send(item_id: int):
         raise HTTPException(409, "already sent or being sent")
     threading.Thread(target=worker.send, args=(cfg, store, item_id), daemon=True).start()
     return {"status": "sending"}
+
+
+@app.get("/api/items/{item_id}/shot", dependencies=[Depends(session)])
+def shot(item_id: int):
+    path = worker.after_shot(cfg, need(item_id)["id"])
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/png")
+
+
+@app.post("/api/items/{item_id}/resolve", dependencies=[Depends(session)])
+async def resolve(item_id: int, request: Request):
+    it = need(item_id)
+    if it["status"] != "unclear":
+        raise HTTPException(409, "nothing to resolve")
+    worker.resolve(cfg, store, it, bool((await request.json()).get("sent")))
+    return store.get(item_id)
 
 
 @app.post("/api/items/{item_id}/discard", dependencies=[Depends(session)])

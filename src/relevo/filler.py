@@ -26,6 +26,8 @@ class Result:
     verified: dict = field(default_factory=dict)
     submitted: bool = False
     confirmation: str = ""
+    confirmed: bool = False  # the form is gone and the page says it went
+    server: str = ""  # what the ATS answered to the submit request
     unknown: list = field(default_factory=list)  # on the page but not in the form data: a person must see these
 
     @property
@@ -64,7 +66,38 @@ async def _fill_field(page, f, value) -> bool:
     raise ValueError(f"cannot fill {f.kind}")
 
 
-async def run(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = ()) -> Result:
+async def _submit(page, result: Result, after_shot: str, seconds: int) -> None:
+    """Clicks once, then waits for the answer and keeps the evidence, whatever it turns out to be."""
+    replies = []
+
+    async def note(response):
+        if "graphql" in response.url and "submit" in response.url.lower():
+            try:
+                replies.append(f"{response.status} {(await response.text())[:400]}")
+            except Exception:
+                replies.append(str(response.status))
+
+    page.on("response", note)
+    button = page.get_by_role("button", name="Submit Application")
+    await button.click()
+    result.submitted = True
+    text, after_reply = "", 0
+    for _ in range(seconds):
+        await page.wait_for_timeout(1000)
+        text = await page.locator("body").inner_text()
+        result.confirmed = await button.count() == 0 and looks_sent(text)
+        after_reply += 1 if replies else 0
+        if result.confirmed or after_reply >= 8:
+            break
+    alerts = await page.locator('[role=alert], [class*="error" i]').all_inner_texts()
+    result.server = " | ".join(replies)
+    result.confirmation = " / ".join([*[a.strip() for a in alerts if a.strip()], text[:200], text[-300:]])[:900]
+    if after_shot:
+        await page.screenshot(path=after_shot, full_page=True)
+
+
+async def run(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (),
+              after_shot: str = "", seconds: int = 45) -> Result:
     if form.missing(answers) or form.invalid(answers):
         raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
     result = Result()
@@ -88,10 +121,7 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False, accept
                 result.unknown.remove(text)
         await page.screenshot(path=shot, full_page=True)
         if submit and not result.failed and not result.unknown:
-            await page.get_by_role("button", name="Submit Application").click()
-            await page.wait_for_timeout(12000)
-            result.submitted = True
-            result.confirmation = (await page.locator("body").inner_text())[:600]
+            await _submit(page, result, after_shot, seconds)
         await browser.close()
     return result
 
@@ -117,5 +147,5 @@ def looks_sent(text: str) -> bool:
     return "success" in low or "thank you for applying" in low or "application was submitted" in low
 
 
-def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = ()) -> Result:
-    return asyncio.run(run(form, answers, shot, submit, tuple(accepted)))
+def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (), after_shot: str = "") -> Result:
+    return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot))

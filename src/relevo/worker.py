@@ -78,6 +78,23 @@ def outbox(cfg: Config, item: dict, material: str) -> None:
     (folder / f"{item['id']}.json").write_text(json.dumps(record, ensure_ascii=False))
 
 
+def form_material(panel: dict) -> str:
+    return "Ashby form by Relevo: " + "; ".join(f"{f['label'][:40]}={f['value']}" for f in panel["fields"] if f["kind"] != "file")
+
+
+def after_shot(cfg: Config, item_id: int) -> Path:
+    return Path(cfg.data) / f"shot-{item_id}-after.png"
+
+
+def resolve(cfg: Config, store: Store, item: dict, sent: bool) -> None:
+    """The person checked an `unclear` send. Only their word moves it, in either direction."""
+    if sent:
+        outbox(cfg, item, form_material(item["data"]) + " (confirmed by hand)")
+        store.finish(item["id"], "sent", "confirmed by the person")
+    else:
+        store.finish(item["id"], "failed", "the person says it did not arrive")
+
+
 def send(cfg: Config, store: Store, item_id: int) -> None:
     """Runs after claim(). Any doubt ends in `unclear`, which is never retried by code."""
     item = store.get(item_id)
@@ -97,15 +114,16 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             return
         answers = {f["id"]: f["value"] for f in panel["fields"]}
         shot = str(Path(cfg.data) / f"shot-{item_id}.png")
-        result = filler.fill(form, answers, shot, submit=True, accepted=panel.get("accepted_unknown", []))
+        result = filler.fill(form, answers, shot, submit=True, accepted=panel.get("accepted_unknown", []),
+                             after_shot=str(after_shot(cfg, item_id)))
         if result.failed or (result.unknown and not result.submitted):
             store.finish(item_id, "failed", f"not sent: failed {result.failed}, unknown {result.unknown}")
-        elif filler.looks_sent(result.confirmation):
-            outbox(cfg, item, "Ashby form by Relevo: " + "; ".join(f"{f['label'][:40]}={f['value']}" for f in panel["fields"]
-                                                                  if f["kind"] != "file"))
+        elif result.confirmed:
+            outbox(cfg, item, form_material(panel))
             store.finish(item_id, "sent", result.confirmation[:200])
         else:
-            store.finish(item_id, "unclear", "submitted, no confirmation seen: " + result.confirmation[:200])
+            store.finish(item_id, "unclear", f"submitted, no confirmation seen. ATS: {result.server or 'no answer seen'}. "
+                                             f"Page: {result.confirmation}")
     except Exception as e:
         store.finish(item_id, "unclear", f"stopped mid-send, check before retrying: {str(e)[:200]}")
 
