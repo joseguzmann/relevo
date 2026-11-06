@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from relevo import ashby, filler, llm, route, track
+from relevo import filler, forms, llm, route, track
 
 ALWAYS_ASK = re.compile(r"consent|agree|authori[sz]e|terms|privacy|gender|race|ethnic|disabilit|veteran|pronoun", re.I)
 ALWAYS_CONFIRM = re.compile(r"salary|compensation|expect|rate|sponsor|visa|work permit|authorized to work|"
@@ -79,8 +79,8 @@ def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, s
     panel["family"] = family
     panel["codes"] = {"pdf": track.new_code(), "form": track.new_code()}
     cv = track.stamp_cv(kit.cv(family), Path(data) / "cv" / str(job["id"]), panel["codes"]["pdf"])
-    if way == "ashby":
-        form = ashby.fetch_form(target)
+    if way in forms.READERS:
+        form = forms.fetch(way, target)
         fields = [{"id": f.id, "label": f.label, "kind": f.kind, "options": list(f.options)} for f in form.fields]
         system = "You fill a job application form. One answer per field id; for options use the exact option text."
         user = f"# Candidate\n{kit.facts(family)}\n\n# Job\n{job.get('description', '')}\n\n# Fields\n{fields}"

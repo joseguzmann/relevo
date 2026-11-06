@@ -1,17 +1,8 @@
 """Which way out a job has. LinkedIn is never a way out: only an email address written in a post is."""
 import re
 
-ASHBY = re.compile(r"https://jobs\.ashbyhq\.com/[^/\s\"'<>]+/[0-9a-f-]{36}")
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 NOT_CONTACT = ("example.com", "sentry.io", "wixpress", ".png", ".jpg")
-
-
-def ashby_url(*texts: str) -> str:
-    for text in texts:
-        m = ASHBY.search(text or "")
-        if m:
-            return m.group(0)
-    return ""
 
 
 def contact_email(text: str) -> str:
@@ -22,11 +13,11 @@ def contact_email(text: str) -> str:
 
 
 def decide(job: dict) -> tuple[str, str]:
-    """Returns (route, target): ashby + url, email + address, or manual + the job's link."""
-    urls = [job.get("url", ""), *job.get("urls", [])]
-    url = ashby_url(*urls, job.get("page_text", ""))
-    if url:
-        return "ashby", url
+    """Returns (route, target): an ATS + its form url, email + address, or manual + the job's link."""
+    from relevo import forms
+    ats, url = forms.find(job.get("url", ""), *job.get("urls", []), job.get("page_text", ""))
+    if ats:
+        return ats, url
     is_post = "linkedin.com" in job.get("url", "") and "/jobs/" not in job.get("url", "")
     if is_post:
         email = contact_email(job.get("description", ""))
@@ -54,5 +45,6 @@ def origin(job: dict, way: str, target: str = "") -> dict:
         ats = next((name for key, name in ATS.items() if key in sources or key in url), "")
         board = next((BOARDS.get(s, s) for s in sources if not s.startswith("linkedin")), "")
         channel, source = ("ATS", ats) if ats else ("Bolsa", board or url.split("/")[2] if "//" in url else board)
-    exits = {"ashby": "Formulario de Ashby", "email": f"Correo a {target}", "manual": "A mano"}
+    exits = {"ashby": "Formulario de Ashby", "greenhouse": "Formulario de Greenhouse", "email": f"Correo a {target}",
+             "manual": "A mano"}
     return {"channel": channel, "source": source, "exit": exits.get(way, way), "location": job.get("location") or ""}

@@ -6,6 +6,7 @@ import urllib.request
 from relevo.models import Field, Form
 
 API = "https://jobs.ashbyhq.com/api/non-user-graphql"
+URL = re.compile(r"https://jobs\.ashbyhq\.com/[^/\s\"'<>]+/[0-9a-f-]{36}")
 QUERY = ("query J($organizationHostedJobsPageName:String!,$jobPostingId:String!){jobPosting("
          "organizationHostedJobsPageName:$organizationHostedJobsPageName,jobPostingId:$jobPostingId)"
          "{applicationForm{sections{fieldEntries{field isRequired}}}}}")

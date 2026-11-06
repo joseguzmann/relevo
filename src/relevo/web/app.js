@@ -155,6 +155,17 @@ async function detail(id) {
       el('p'), el('button', {textContent: 'Sí se envió', onclick: answer(true)}), ' ',
       el('button', {textContent: 'No se envió', onclick: answer(false)})));
   } else views.push(el('div', {className: 'card', textContent: STATUS[item.status] || item.status}));
+  if (['sent', 'unclear'].includes(item.status) && item.route !== 'email') {
+    const box = el('div');
+    views.push(el('details', {className: 'history', ontoggle: async e => {
+      if (!e.target.open || box.childElementCount) return;
+      const reqs = await api(`/items/${id}/sent`);
+      box.append(...(reqs.length ? reqs.map(r => el('div', {className: 'card'},
+        el('div', {className: 'soft', textContent: `${r.method} ${r.url}`}),
+        el('div', {className: 'tag', textContent: 'Respuesta: ' + (r.answer || 'ninguna')}),
+        el('pre', {className: 'soft', textContent: r.body || '(sin cuerpo)'}))) : [el('p', {className: 'soft', textContent: 'No hay registro de esta postulación.'})]));
+    }}, el('summary', {textContent: 'Lo que se envió'}), box));
+  }
   root.replaceChildren(...views);
 }
 

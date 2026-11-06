@@ -1,5 +1,6 @@
 """The API the phone talks to, and the app's static files. Every route but login needs a session."""
 import hashlib
+import json
 import hmac
 import os
 import secrets
@@ -159,6 +160,12 @@ def shot(item_id: int):
     if not path.exists():
         raise HTTPException(404)
     return FileResponse(path, media_type="image/png")
+
+
+@app.get("/api/items/{item_id}/sent", dependencies=[Depends(session)])
+def sent(item_id: int):
+    path = worker.evidence(cfg, need(item_id)["id"])
+    return json.loads(path.read_text()) if path.exists() else []
 
 
 @app.post("/api/items/{item_id}/resolve", dependencies=[Depends(session)])

@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from relevo import ashby, filler, mailer, prepare, push
+from relevo import filler, forms, mailer, prepare, push
 from relevo.store import Store
 
 log = logging.getLogger("relevo.worker")
@@ -88,8 +88,13 @@ def outbox(cfg: Config, item: dict, material: str) -> None:
     (folder / f"{item['id']}.json").write_text(json.dumps(record, ensure_ascii=False))
 
 
-def form_material(panel: dict) -> str:
-    return "Ashby form by Relevo: " + "; ".join(f"{f['label'][:40]}={f['value']}" for f in panel["fields"] if f["kind"] != "file")
+def form_material(panel: dict, ats: str = "") -> str:
+    return f"{forms.NAMES.get(ats, 'ATS')} form by Relevo: " + "; ".join(f"{f['label'][:40]}={f['value']}" for f in panel["fields"] if f["kind"] != "file")
+
+
+def evidence(cfg: Config, item_id: int) -> Path:
+    """Every request the click sent and what came back: the record of what actually went out."""
+    return Path(cfg.data) / f"sent-{item_id}.json"
 
 
 def after_shot(cfg: Config, item_id: int) -> Path:
@@ -99,7 +104,7 @@ def after_shot(cfg: Config, item_id: int) -> Path:
 def resolve(cfg: Config, store: Store, item: dict, sent: bool) -> None:
     """The person checked an `unclear` send. Only their word moves it, in either direction."""
     if sent:
-        outbox(cfg, item, form_material(item["data"]) + " (confirmed by hand)")
+        outbox(cfg, item, form_material(item["data"], item["route"]) + " (confirmed by hand)")
         store.finish(item["id"], "sent", "confirmed by the person")
     else:
         store.finish(item["id"], "failed", "the person says it did not arrive")
@@ -117,7 +122,7 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             outbox(cfg, item, f"Email to {mail['to']}, Gmail id {sent_id}: {mail['subject']}")
             store.finish(item_id, "sent", "email sent")
             return
-        form = ashby.fetch_form(panel["target"])
+        form = forms.fetch(item["route"], panel["target"])
         known = {f["id"] for f in panel["fields"]}
         if {f.id for f in form.fields} != known:
             store.finish(item_id, "failed", "the form changed; nothing was sent")
@@ -126,10 +131,11 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
         shot = str(Path(cfg.data) / f"shot-{item_id}.png")
         result = filler.fill(form, answers, shot, submit=True, accepted=panel.get("accepted_unknown", []),
                              after_shot=str(after_shot(cfg, item_id)))
+        evidence(cfg, item_id).write_text(json.dumps(result.requests, ensure_ascii=False, indent=1))
         if result.failed or (result.unknown and not result.submitted):
             store.finish(item_id, "failed", f"not sent: failed {result.failed}, unknown {result.unknown}")
         elif result.confirmed:
-            outbox(cfg, item, form_material(panel))
+            outbox(cfg, item, form_material(panel, item["route"]))
             store.finish(item_id, "sent", result.confirmation[:200])
         else:
             store.finish(item_id, "unclear", f"submitted, no confirmation seen. ATS: {result.server or 'no answer seen'}. "

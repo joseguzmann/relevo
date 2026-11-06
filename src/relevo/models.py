@@ -20,6 +20,7 @@ class Field:
 class Form:
     url: str
     fields: list[Field] = field(default_factory=list)
+    ats: str = "ashby"
 
     def missing(self, answers: dict) -> list[str]:
         """Labels of required fields with no answer."""

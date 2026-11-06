@@ -57,6 +57,8 @@ class AfterClick(unittest.TestCase):
         result = self.submit('{"ok": true}')
         self.assertTrue(result.confirmed)
         self.assertIn('"ok": true', result.server)
+        self.assertEqual(result.requests[0]["method"], "POST")
+        self.assertIn("ApiSubmitForm", result.requests[0]["url"])
 
     def test_a_refusal_keeps_its_evidence(self):
         result = self.submit('{"ok": false}')

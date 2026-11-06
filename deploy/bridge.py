@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 BASE = Path("/srv/apps/relevo")
-MIN_MATCH = 8
+MIN_MATCH = int(os.environ.get("RELEVO_MIN_MATCH", "7"))
 WINDOW_HOURS = int(os.environ.get("RELEVO_WINDOW_HOURS", "168"))
 SINCE = os.environ.get("RELEVO_SINCE", "")  # older jobs stay in the backlog: they are prepared on request, not notified
 REFS = Path("/srv/apps/visits/refs/refs.json")

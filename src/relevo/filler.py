@@ -1,5 +1,6 @@
 """Fills a form from its fields and approved answers, checks each one, and submits only if told to."""
 import asyncio
+import re
 from dataclasses import dataclass, field
 
 from playwright.async_api import async_playwright
@@ -21,6 +22,32 @@ UNKNOWN_JS = r"""(labels) => {
 }"""
 
 
+GH_UNKNOWN_JS = r"""(ids) => {
+  const skip = /^(country|candidate-location|iti-|g-recaptcha|resume_text|cover_letter_text)/, out = [];
+  for (const e of document.querySelectorAll('form input, form textarea, form select')) {
+    const id = e.id || e.name;
+    if (!id || e.type === 'hidden' || skip.test(id) || ids.includes(id)) continue;
+    const label = document.querySelector(`label[for="${CSS.escape(id)}"]`)?.innerText || e.getAttribute('aria-label') || id;
+    out.push(label.replace(/\s+/g, ' ').trim().slice(0, 200));
+  }
+  return [...new Set(out)];
+}"""
+SUBMIT = re.compile(r"submit application", re.I)
+NOISE = re.compile(r"recaptcha|google|gstatic|analytics|sentry|datadog|segment|hotjar|intercom|clarity|doubleclick|"
+                   r"facebook|linkedin|cookielaw|onetrust", re.I)
+
+
+def _body(request) -> str:
+    """What the browser sent, readable: a file inside it is named, not copied."""
+    try:
+        raw = request.post_data_buffer or b""
+    except Exception:
+        return ""
+    text = raw.decode("utf-8", "replace")
+    text = re.sub(r"(Content-Type: application/pdf\r?\n\r?\n).*?(\r?\n--)", r"\1[PDF file]\2", text, flags=re.S)
+    return text[:6000]
+
+
 @dataclass
 class Result:
     verified: dict = field(default_factory=dict)
@@ -28,6 +55,7 @@ class Result:
     confirmation: str = ""
     confirmed: bool = False  # the form is gone and the page says it went
     server: str = ""  # what the ATS answered to the submit request
+    requests: list = field(default_factory=list)  # every request the click sent: method, url, body, answer
     unknown: list = field(default_factory=list)  # on the page but not in the form data: a person must see these
 
     @property
@@ -35,7 +63,48 @@ class Result:
         return [k for k, ok in self.verified.items() if not ok]
 
 
-async def _fill_field(page, f, value) -> bool:
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", text or "")
+
+
+async def _fill_greenhouse(page, f, value) -> bool:
+    box = page.locator(f'[id="{f.id}"]')
+    if f.kind in ("text", "email", "number", "long_text"):
+        await box.fill(str(value))
+        got = await box.input_value()
+        if f.id == "phone":
+            return _digits(got)[-9:] == _digits(str(value))[-9:]
+        return got == str(value)
+    if f.kind == "file":
+        await box.set_input_files(value)
+        await page.wait_for_timeout(2500)
+        return value.rsplit("/", 1)[-1] in await page.locator("form").inner_text()
+    if f.kind == "location":
+        city = str(value).split(",")[0].strip()
+        loc = page.locator("#candidate-location")
+        await loc.click()
+        await loc.fill(city)
+        await page.wait_for_timeout(2500)
+        await page.get_by_role("option").filter(has_text=city).first.click()
+        await page.wait_for_timeout(500)
+        shown = await loc.evaluate("e => e.closest('[class*=select]')?.innerText || e.value")
+        return city.lower() in shown.lower()
+    if f.kind in ("single_choice", "multi_choice"):
+        values = value if isinstance(value, list) else [value]
+        for v in values:
+            await box.click()
+            await box.fill(v)
+            await page.wait_for_timeout(600)
+            await page.get_by_role("option", name=v, exact=True).first.click()
+            await page.wait_for_timeout(300)
+        shown = await box.evaluate("e => e.closest('.select__control, [class*=select__control]')?.innerText || ''")
+        return all(v in shown for v in values)
+    raise ValueError(f"cannot fill {f.kind}")
+
+
+async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
+    if ats == "greenhouse":
+        return await _fill_greenhouse(page, f, value)
     entry = page.locator('[class*="fieldEntry"]').filter(has_text=f.label).first
     if f.kind in ("text", "email", "number", "long_text"):
         box = entry.locator("input, textarea").first
@@ -70,15 +139,23 @@ async def _submit(page, result: Result, after_shot: str, seconds: int) -> None:
     """Clicks once, then waits for the answer and keeps the evidence, whatever it turns out to be."""
     replies = []
 
-    async def note(response):
-        if "graphql" in response.url and "submit" in response.url.lower():
-            try:
-                replies.append(f"{response.status} {(await response.text())[:400]}")
-            except Exception:
-                replies.append(str(response.status))
+    def sent(request):
+        if request.method in ("POST", "PUT", "PATCH") and not NOISE.search(request.url):
+            result.requests.append({"method": request.method, "url": request.url[:300], "body": _body(request), "answer": ""})
 
+    async def note(response):
+        for r in result.requests:
+            if r["url"] == response.url[:300] and not r["answer"]:
+                try:
+                    r["answer"] = f"{response.status} {(await response.text())[:1500]}"
+                except Exception:
+                    r["answer"] = str(response.status)
+                replies.append(f"{response.status} {r['answer'][4:400]}")
+                break
+
+    page.on("request", sent)
     page.on("response", note)
-    button = page.get_by_role("button", name="Submit Application")
+    button = page.get_by_role("button", name=SUBMIT)
     await button.click()
     result.submitted = True
     text, after_reply = "", 0
@@ -96,6 +173,12 @@ async def _submit(page, result: Result, after_shot: str, seconds: int) -> None:
         await page.screenshot(path=after_shot, full_page=True)
 
 
+async def _unknown(page, form: Form) -> list:
+    if form.ats == "greenhouse":
+        return await page.evaluate(GH_UNKNOWN_JS, [f.id for f in form.fields])
+    return await page.evaluate(UNKNOWN_JS, [f.label for f in form.fields])
+
+
 async def run(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (),
               after_shot: str = "", seconds: int = 45) -> Result:
     if form.missing(answers) or form.invalid(answers):
@@ -110,11 +193,11 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False, accept
             if answers.get(f.id) in (None, "", []):
                 continue
             try:
-                result.verified[f.label] = await _fill_field(page, f, answers[f.id])
+                result.verified[f.label] = await _fill_field(page, f, answers[f.id], form.ats)
             except Exception as e:  # one bad field must block the submit, not hide the others
                 result.verified[f.label] = False
                 print(f"field failed: {f.label}: {str(e)[:160]}")
-        result.unknown = await page.evaluate(UNKNOWN_JS, [f.label for f in form.fields])
+        result.unknown = await _unknown(page, form)
         for text in accepted:  # a box the person read and ticked in the panel
             if text in result.unknown:
                 await page.get_by_text(text.rsplit(" ", 2)[-2] + " " + text.rsplit(" ", 1)[-1], exact=True).first.click()
@@ -132,7 +215,7 @@ async def _scan(form: Form) -> list:
         page = await browser.new_page()
         await page.goto(form.url, wait_until="networkidle", timeout=45000)
         await page.wait_for_timeout(1500)
-        unknown = await page.evaluate(UNKNOWN_JS, [f.label for f in form.fields])
+        unknown = await _unknown(page, form)
         await browser.close()
     return unknown
 
