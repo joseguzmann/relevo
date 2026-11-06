@@ -57,7 +57,9 @@ def reread(job: dict, text: str) -> dict:
               "Ecuador out, or it asks more than 4 years of experience. A mention of one country is not an exclusion "
               "when the posting also says LATAM or global. doubt says, in one or two short sentences in Spanish, what "
               "ruled it out or what is unclear about remote work from Ecuador or the years asked, quoting the posting; "
-              "it is empty when nothing is. Do not comment on the candidate's skills. The candidate reads it and decides.")
+              "it is empty when nothing is. LATAM, Latin America, South America, Americas and global all include Ecuador, "
+              "and a posting that states no years is fine: neither is a doubt. Do not comment on the candidate's skills. "
+              "The candidate reads it and decides.")
     return llm.ask(system, f"{job.get('title')} at {job.get('company')}\n\n{text}", llm.REREAD)
 
 

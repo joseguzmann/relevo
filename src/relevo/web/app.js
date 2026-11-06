@@ -92,7 +92,7 @@ async function detail(id) {
       el('p', {className: 'soft', textContent: `Sale por: ${item.origin.exit}`}),
       item.origin.location ? el('p', {className: 'soft', textContent: `Ubicación: ${item.origin.location}`}) : null,
       el('p', {className: 'soft', textContent: job.why || ''}),
-      job.blockers ? el('p', {className: 'soft', textContent: 'Ojo: ' + job.blockers}) : null,
+      job.blockers && job.blockers !== '[]' ? el('p', {className: 'soft', textContent: 'Ojo: ' + job.blockers}) : null,
       d.reread ? el('p', {className: 'soft', textContent: 'Relectura: ' + d.reread.reason}) : null,
       el('a', {href: job.url, target: '_blank', rel: 'noopener', textContent: 'Abrir vacante'}),
       el('details', {}, el('summary', {textContent: 'Texto completo'}), el('pre', {textContent: job.description || ''})))];

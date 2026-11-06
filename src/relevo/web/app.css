@@ -17,3 +17,4 @@ details summary{cursor:pointer;color:var(--brand)}
 .spin{display:inline-block;width:16px;height:16px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}button:disabled{opacity:.75}.shot{display:block;width:100%;border:1px solid var(--line);border-radius:8px;margin-bottom:10px}
 .warn{border-color:var(--warn);border-width:2px}.warn p{margin:6px 0 0}.actions{display:flex;gap:8px;margin-top:6px}.actions button{flex:none;padding:15px 14px}.actions button.main{flex:1;width:auto}
+a{color:var(--brand)}
