@@ -50,7 +50,8 @@ async function list() {
     views.push(b, el('p'));
   }
   views.push(...(open.length ? open.map(row) : [el('p', {className: 'soft', textContent: 'Nada pendiente.'})]));
-  if (rest.length) views.push(el('h2', {textContent: 'Historial'}), ...rest.map(row));
+  if (rest.length) views.push(el('details', {className: 'history'},
+    el('summary', {textContent: `Historial (${rest.length})`}), ...rest.map(row)));
   root.replaceChildren(...views);
 }
 
@@ -96,8 +97,9 @@ async function detail(id) {
       d.reread ? el('p', {className: 'soft', textContent: 'Relectura: ' + d.reread.reason}) : null,
       el('a', {href: job.url, target: '_blank', rel: 'noopener', textContent: 'Abrir vacante'}),
       el('details', {}, el('summary', {textContent: 'Texto completo'}), el('pre', {textContent: job.description || ''})))];
-  if ((d.history || []).length) views.push(el('h2', {textContent: 'Historial con esta empresa'}),
-    el('div', {className: 'card'}, d.history.map(h => el('div', {className: 'soft', textContent: `#${h.number} ${h.title} · ${h.status}`}))));
+  if ((d.history || []).length) views.push(el('details', {className: 'history'},
+    el('summary', {textContent: `Historial con esta empresa (${d.history.length})`}),
+    el('div', {className: 'card'}, d.history.map(h => el('div', {className: 'soft', textContent: `#${h.number} ${h.title} · ${h.status}`})))));
   if (item.reason && ['manual', 'failed', 'dropped'].includes(item.status)) views.push(el('div', {className: 'card soft', textContent: item.reason}));
   (d.unknown || []).length && views.push(el('h2', {textContent: 'Esto está en la página y no en los datos'}),
     ...d.unknown.map(u => el('label', {className: 'card opt'},
