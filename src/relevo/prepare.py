@@ -54,14 +54,15 @@ def merge(form, drafted: list[dict], cv_path: str) -> list[dict]:
 def reread(job: dict, text: str) -> dict:
     system = ("You check a job posting for one candidate in Quito, Ecuador. keep is false only if the posting clearly "
               "rules the candidate out: it is not remote, it excludes Ecuador or is limited to countries that leave "
-              "Ecuador out, or it asks more than 4 years of experience. If it is unclear, keep is true and the reason "
-              "states the doubt, because the candidate decides. A mention of one country is not an exclusion when the "
-              "posting also says LATAM or global.")
+              "Ecuador out, or it asks more than 4 years of experience. A mention of one country is not an exclusion "
+              "when the posting also says LATAM or global. doubt says, in one or two short sentences in Spanish, what "
+              "ruled it out or what is unclear about remote work from Ecuador or the years asked, quoting the posting; "
+              "it is empty when nothing is. Do not comment on the candidate's skills. The candidate reads it and decides.")
     return llm.ask(system, f"{job.get('title')} at {job.get('company')}\n\n{text}", llm.REREAD)
 
 
 def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, str]:
-    """Returns (route, status, panel, reason). `manual` and `dropped` never reach a Send button."""
+    """Returns (route, status, panel, reason). Nothing is dropped here: a doubt is a warning, and the person decides."""
     way, target = route.decide(job)
     panel = {"job": {k: job.get(k) for k in ("id", "title", "company", "url", "why", "match", "blockers", "posted_at",
                                              "stack", "description", "sources", "location")},
@@ -70,8 +71,8 @@ def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, s
         return way, "manual", panel, "no form or email Relevo can use"
     check = reread(job, job.get("description", ""))
     panel["reread"] = check
-    if not check["keep"]:
-        return way, "dropped", panel, check["reason"]
+    if not check["keep"] or check.get("doubt"):
+        panel["warning"] = {"discard": not check["keep"], "text": check.get("doubt") or check["reason"]}
     family = kit.family(job)
     panel["family"] = family
     panel["codes"] = {"pdf": track.new_code(), "form": track.new_code()}

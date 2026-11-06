@@ -42,11 +42,11 @@ def backlog(cfg: Config) -> list[dict]:
     return json.loads(path.read_text()) if path.exists() else []
 
 
-def notify(cfg: Config, store: Store, pem: str, job: dict, status: str, item: int | None) -> None:
-    """Every job in the app gets a notification. Only one the reread dropped does not."""
-    if item and status != "dropped":
-        title = job.get("title", "")[:90]
-        push.send(store, pem, cfg.site, job.get("company") or "Relevo", f"A mano · {title}" if status == "manual" else title, item)
+def notify(cfg: Config, store: Store, pem: str, job: dict, status: str, item: int | None, panel: dict) -> None:
+    """Every job in the app gets a notification."""
+    if item:
+        mark = "A mano · " if status == "manual" else "⚠️ " if panel.get("warning") else ""
+        push.send(store, pem, cfg.site, job.get("company") or "Relevo", mark + job.get("title", "")[:90], item)
 
 
 def page_text(url: str) -> str:
@@ -73,7 +73,7 @@ def tick(cfg: Config, store: Store, kit: prepare.Kit, pem: str) -> None:
         except Exception as e:  # one bad posting must not stop the others
             log.warning("job %s: %s", job["id"], str(e)[:200])
             way, status, panel, reason = "manual", "manual", {"job": job, "target": job.get("url", "")}, str(e)[:200]
-        notify(cfg, store, pem, job, status, store.add(job["id"], way, status, panel, reason))
+        notify(cfg, store, pem, job, status, store.add(job["id"], way, status, panel, reason), panel)
 
 
 def outbox(cfg: Config, item: dict, material: str) -> None:
@@ -159,7 +159,7 @@ def one(cfg: Config, store: Store, job_id: int) -> None:
     way, status, panel, reason = prepare.prepare(job, prepare.Kit(cfg.kit), cfg.data)
     item = store.add(job_id, way, status, panel, reason)
     print(f"item {item}: {way}, {status}. {reason}")
-    notify(cfg, store, push.keys(cfg.data)[0], job, status, item)
+    notify(cfg, store, push.keys(cfg.data)[0], job, status, item, panel)
 
 
 if __name__ == "__main__":

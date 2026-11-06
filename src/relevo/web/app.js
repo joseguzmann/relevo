@@ -39,6 +39,7 @@ async function list() {
   const open = items.filter(i => ['ready', 'failed', 'unclear', 'sending'].includes(i.status));
   const rest = items.filter(i => !open.includes(i));
   const row = i => el('div', {className: 'card tap', onclick: () => { location.hash = i.id; }},
+    i.warning ? el('div', {className: 'tag confirm', textContent: i.warning.discard ? '⚠️ Posible descarte' : '⚠️ Con duda'}) : null,
     el('div', {textContent: i.job.title || 'Vacante'}),
     el('div', {className: 'soft', textContent: `${i.job.company || ''} · ${i.job.match ?? '-'}/10 · ${STATUS[i.status] || i.status}`}),
     el('div', {className: 'soft', textContent: `${i.origin.channel} · ${i.origin.source} → ${i.origin.exit}`}));
@@ -82,6 +83,9 @@ async function detail(id) {
   const changes = {}, mail = {}, accepted = new Set(d.accepted_unknown || []);
   const views = [el('button', {className: 'back', textContent: '‹ Volver', onclick: () => { location.hash = ''; }}),
     el('h1', {textContent: job.title || 'Vacante'}),
+    d.warning ? el('div', {className: 'card warn'},
+      el('div', {className: 'tag confirm', textContent: d.warning.discard ? '⚠️ Posible descarte' : '⚠️ Con duda'}),
+      el('p', {textContent: d.warning.text})) : null,
     el('div', {className: 'card'},
       el('div', {textContent: `${job.company || ''} · ${job.match ?? '-'}/10`}),
       el('p', {className: 'soft', textContent: `Canal: ${item.origin.channel} · Fuente: ${item.origin.source}`}),
@@ -131,7 +135,7 @@ async function detail(id) {
     const drop = el('button', {textContent: 'Descartar', onclick: async () => {
       await api(`/items/${id}/discard`, {method: 'POST'}); location.hash = '';
     }});
-    views.push(el('p'), drop, el('div', {className: 'bar'}, el('div', {}, msg, send)));
+    views.push(el('div', {className: 'bar'}, el('div', {}, msg, el('div', {className: 'actions'}, drop, send))));
   } else if (item.status === 'sending') {
     const msg = el('div', {className: 'soft'}), busy = el('button', {className: 'main'});
     working(busy, 'Enviando…');

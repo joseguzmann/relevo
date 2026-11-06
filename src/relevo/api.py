@@ -87,6 +87,7 @@ async def subscribe(request: Request):
 def items():
     keep = ("title", "company", "match")
     return [{"id": i["id"], "route": i["route"], "status": i["status"], "reason": i["reason"], "origin": origin(i),
+             "warning": i["data"].get("warning"),
              "job": {k: i["data"].get("job", {}).get(k) for k in keep}} for i in store.list()]
 
 
