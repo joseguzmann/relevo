@@ -3,7 +3,10 @@
 (async () => {
   const D = __DATA__;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const done = text => (typeof completion === 'function' ? completion(text) : alert(text));
+  const report = text => { try { new Image().src = D.report + '&m=' + encodeURIComponent(text); } catch (e) {} };
+  const done = text => { report('end: ' + text); return typeof completion === 'function' ? completion(text) : alert(text); };
+  report(`start ${location.href} form=${!!document.querySelector('[name=firstName]')} ua=${navigator.userAgent.slice(0, 80)}`);
+  window.addEventListener('error', e => report('error: ' + e.message));
   const setValue = (el, v) => {
     const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
@@ -76,7 +79,7 @@
   const bad = [];
   for (const f of D.fields) {
     let ok = false;
-    try { ok = await fill(f); } catch (e) { ok = false; }
+    try { ok = await fill(f); } catch (e) { ok = false; report(`field ${f.id}: ${e.message}`); }
     if (!ok) bad.push(f.label);
   }
   document.querySelector('iframe[src*="recaptcha"]')?.scrollIntoView({block: 'center'});

@@ -239,10 +239,25 @@ def fill_script(url: str, k: str):
         elif f["id"] == "dateAvailable":
             value = filler.us_date(str(value))
         fields.append({"id": f["id"], "kind": f["kind"], "label": f["label"][:60], "value": value})
-    data = {"page": it["data"].get("form_url") or it["data"]["target"], "fields": fields, "cv": {"name": cv.name, "b64": base64.b64encode(cv.read_bytes()).decode()} if cv else None}
+    token = secrets.token_urlsafe(12)
+    reports[token] = it["id"]
+    data = {"report": f"https://{cfg.site.split('//')[-1].rstrip('/')}/api/fill/report?t={token}",
+            "page": it["data"].get("form_url") or it["data"]["target"], "fields": fields, "cv": {"name": cv.name, "b64": base64.b64encode(cv.read_bytes()).decode()} if cv else None}
     script = (WEB / f"fill-{it['route']}.js").read_text().replace("__DATA__", json.dumps(data, ensure_ascii=False))
     store.finish(it["id"], "ready", "filled in Safari, waiting for the person to submit")
     return PlainTextResponse(script, media_type="text/javascript")
+
+
+reports: dict[str, int] = {}  # one token per script handed out: the page tells Relevo how the fill went
+
+
+@app.get("/api/fill/report")
+def fill_report(t: str, m: str = ""):
+    item_id = reports.get(t)
+    if item_id is not None:
+        with (Path(cfg.data) / f"fill-{item_id}.log").open("a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {m[:1500]}\n")
+    return Response(content=base64.b64decode("R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAIBAAA="), media_type="image/gif")
 
 
 @app.post("/api/items/{item_id}/done", dependencies=[Depends(session)])
