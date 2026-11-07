@@ -34,10 +34,13 @@
     }
     if (f.id === 'countryId.value') {
       const toggle = () => document.querySelector('button[aria-label^="Country"]');
-      toggle().click();
-      await sleep(400);
-      const search = document.querySelector('.fab-MenuSearch__input');
-      if (search) { setValue(search, f.value); await sleep(500); }
+      const t = toggle();
+      t.focus();  // a script click does not open this menu; the keyboard does
+      for (const key of ['Enter', 'ArrowDown']) {
+        t.dispatchEvent(new KeyboardEvent('keydown', {key, code: key, bubbles: true}));
+        await sleep(500);
+        if (document.querySelector('[role=menuitem]')) break;
+      }
       const item = [...document.querySelectorAll('[role=menuitem]')].find(m => m.innerText.trim() === f.value);
       if (!item) return false;
       item.click();
