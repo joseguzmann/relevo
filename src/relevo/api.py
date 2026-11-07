@@ -224,11 +224,11 @@ def fill_script(url: str, k: str):
         it = open_items[0]
     if it is None:
         return PlainTextResponse("completion('Relevo: esta página no tiene una postulación abierta en Relevo.');",
-                                 media_type="text/javascript")
+                                 media_type="text/plain; charset=utf-8")
     missing = blockers(it)
     if missing:
         text = json.dumps("Relevo: falta en la app: " + " · ".join(missing))
-        return PlainTextResponse(f"completion({text});", media_type="text/javascript")
+        return PlainTextResponse(f"completion({text});", media_type="text/plain; charset=utf-8")
     fields, cv = [], None
     for f in it["data"]["fields"]:
         if f["value"] in (None, "", []):
@@ -245,7 +245,7 @@ def fill_script(url: str, k: str):
             "page": it["data"].get("form_url") or it["data"]["target"], "fields": fields, "cv": {"name": cv.name, "b64": base64.b64encode(cv.read_bytes()).decode()} if cv else None}
     script = (WEB / f"fill-{it['route']}.js").read_text().replace("__DATA__", json.dumps(data, ensure_ascii=False))
     store.finish(it["id"], "ready", "filled in Safari, waiting for the person to submit")
-    return PlainTextResponse(script, media_type="text/javascript")
+    return PlainTextResponse(script, media_type="text/plain; charset=utf-8")
 
 
 reports: dict[str, int] = {}  # one token per script handed out: the page tells Relevo how the fill went
@@ -307,7 +307,7 @@ def index():
 
 @app.get("/sw.js")
 def service_worker():
-    return FileResponse(WEB / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+    return FileResponse(WEB / "sw.js", media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/", StaticFiles(directory=WEB), name="web")
