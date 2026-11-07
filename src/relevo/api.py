@@ -225,6 +225,14 @@ def fill_script(url: str, k: str):
     if it is None:
         return PlainTextResponse("completion('Relevo: esta página no tiene una postulación abierta en Relevo.');",
                                  media_type="text/plain; charset=utf-8")
+    probe = Path(cfg.data) / "fill-probe"
+    if probe.exists():  # a one-off tiny script: does the shortcut run anything at all on the page?
+        probe.unlink()
+        token = secrets.token_urlsafe(12)
+        reports[token] = it["id"]
+        src = f"https://{cfg.site.split('//')[-1].rstrip('/')}/api/fill/report?t={token}&m="
+        return PlainTextResponse(f"new Image().src = {json.dumps(src)} + encodeURIComponent('probe ran on ' + location.href);"
+                                 f" completion('Relevo: prueba OK');", media_type="text/plain; charset=utf-8")
     missing = blockers(it)
     if missing:
         text = json.dumps("Relevo: falta en la app: " + " · ".join(missing))
