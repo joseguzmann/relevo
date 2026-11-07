@@ -5,6 +5,9 @@ READERS = {"ashby": ashby, "greenhouse": greenhouse, "manatal": manatal, "breezy
 NAMES = {"ashby": "Ashby", "greenhouse": "Greenhouse", "manatal": "Manatal", "breezy": "Breezy", "bamboohr": "BambooHR"}
 
 
+HAND = {"bamboohr"}  # a captcha the person solves: Relevo fills the form in their own Safari and they submit
+
+
 def find(*texts: str) -> tuple[str, str]:
     """(ats, url) of the first form link found, or ("", "")."""
     for text in texts:

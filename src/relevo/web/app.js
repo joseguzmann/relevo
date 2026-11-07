@@ -12,6 +12,7 @@ const api = async (path, opts = {}) => {
   return r.json();
 };
 const STATE = {ready: 'listo', confirm: 'confirmar', missing: 'falta'};
+const HAND = ['bamboohr'];
 const STATUS = {ready: 'Para enviar', code: 'Falta el código', captcha: 'Falta el captcha', sending: 'Enviando…', sent: 'Enviada', failed: 'No se envió', unclear: 'Revisar', manual: 'Manual', dropped: 'Descartada'};
 
 function login() {
@@ -116,7 +117,36 @@ async function detail(id) {
     f.source ? el('div', {className: 'soft', textContent: f.source}) : null)));
   if (item.status === 'manual') views.push(el('p', {className: 'soft', textContent: 'Esta se postula a mano.'}));
   const save = () => api('/items/' + id, {method: 'PUT', body: JSON.stringify({fields: changes, email: mail, accepted_unknown: [...accepted]})});
-  if (['ready', 'failed'].includes(item.status)) {
+  if (['ready', 'failed'].includes(item.status) && HAND.includes(item.route)) {
+    const msg = el('div', {className: 'soft', textContent: item.reason || ''});
+    const setup = el('details', {className: 'history', ontoggle: async e => {
+      if (!e.target.open || setup.querySelector('pre')) return;
+      const {key} = await api('/fillkey');
+      const url = `${location.origin}/api/fill/script?k=${key}&url=`;
+      setup.append(el('div', {className: 'card'},
+        el('p', {textContent: 'Una sola vez, en la app Atajos: nuevo atajo «Rellenar con Relevo».'}),
+        el('ol', {}, ...['Detalles del atajo: activa «Mostrar en hoja de compartir», acepta «Páginas web de Safari».',
+          'Acción «Obtener contenido de URL»: la URL de abajo y, pegada al final, la variable «URL» de la entrada del atajo.',
+          'Acción «Ejecutar JavaScript en página web»: borra el código de ejemplo y pon solo la variable «Contenido de URL».']
+          .map(t => el('li', {textContent: t}))),
+        el('pre', {className: 'soft', textContent: url}),
+        el('button', {textContent: 'Copiar URL', onclick: () => navigator.clipboard.writeText(url)})));
+    }}, el('summary', {textContent: 'Configurar el atajo de Safari'}));
+    views.push(el('h2', {textContent: 'Esta la envías tú'}), el('div', {className: 'card'},
+      el('p', {textContent: 'Tiene captcha. Ábrela en Safari, toca Compartir → «Rellenar con Relevo», resuelve el captcha y toca Submit. Luego vuelve y toca «Ya lo envié».'})), setup);
+    const open = el('button', {className: 'main', textContent: 'Abrir en Safari', onclick: async () => {
+      await save().catch(() => {});
+      window.open(d.form_url || d.target, '_blank');
+    }});
+    const sent = el('button', {textContent: 'Ya lo envié', onclick: async () => {
+      if (!confirm('¿Ya tocaste Submit y la página dijo que se envió?')) return;
+      await api(`/items/${id}/done`, {method: 'POST'}); detail(id);
+    }});
+    const drop = el('button', {textContent: 'Descartar', onclick: async () => {
+      await api(`/items/${id}/discard`, {method: 'POST'}); location.hash = '';
+    }});
+    views.push(el('div', {className: 'bar'}, el('div', {}, msg, el('div', {className: 'actions'}, drop, sent, open))));
+  } else if (['ready', 'failed'].includes(item.status)) {
     const msg = el('div', {className: 'soft'});
     const send = el('button', {className: 'main', textContent: item.route === 'email' ? 'Enviar correo' : 'Postular', onclick: async () => {
       const label = send.textContent;

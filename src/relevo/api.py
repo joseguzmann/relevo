@@ -9,10 +9,12 @@ import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from relevo import push, route, worker
+import base64
+
+from relevo import filler, forms, push, route, worker
 from relevo.store import Store
 
 cfg = worker.Config()
@@ -25,6 +27,10 @@ if not secret_file.exists():
     secret_file.write_text(secrets.token_hex(32))
     secret_file.chmod(0o600)
 SECRET = secret_file.read_text().encode()
+fill_key_file = Path(cfg.data) / "fill.key"  # the Safari shortcut's key: it can only read answers of open items
+if not fill_key_file.exists():
+    fill_key_file.write_text(secrets.token_urlsafe(24))
+    fill_key_file.chmod(0o600)
 DAYS = 30
 fails = {"n": 0, "until": 0.0}
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -143,6 +149,8 @@ def send(item_id: int):
     it = need(item_id)
     if it["route"] == "manual":
         raise HTTPException(400, "this one has no way out from here")
+    if it["route"] in forms.HAND:
+        raise HTTPException(400, "Esta se llena en Safari con el atajo y la envías tú.")
     if it["route"] == "email" and not Path(cfg.token).exists():
         raise HTTPException(503, "Gmail todavía no está conectado. No se envió nada.")
     missing = blockers(it)
@@ -194,6 +202,56 @@ async def tap(item_id: int, request: Request):
     with worker.taps_file(cfg, item_id).open("a") as f:
         f.write(f"{x:.4f},{y:.4f}\n")
     return {"ok": True}
+
+
+@app.get("/api/fillkey", dependencies=[Depends(session)])
+def fill_key():
+    return {"key": fill_key_file.read_text().strip()}
+
+
+def same_form(a: str, b: str) -> bool:
+    return bool(a and b) and forms.find(a)[1].lower() == forms.find(b)[1].lower() != ""
+
+
+@app.get("/api/fill/script")
+def fill_script(url: str, k: str):
+    """What the Safari shortcut runs on the page open there: the approved answers and the CV, nothing else."""
+    if not hmac.compare_digest(k.encode(), fill_key_file.read_text().strip().encode()):
+        raise HTTPException(403)
+    it = next((i for i in store.list() if i["route"] in forms.HAND and i["status"] in ("ready", "failed")
+               and same_form(url, i["data"].get("target", ""))), None)
+    if it is None:
+        return PlainTextResponse("completion('Relevo: esta página no tiene una postulación abierta en Relevo.');",
+                                 media_type="text/javascript")
+    missing = blockers(it)
+    if missing:
+        text = json.dumps("Relevo: falta en la app: " + " · ".join(missing))
+        return PlainTextResponse(f"completion({text});", media_type="text/javascript")
+    fields, cv = [], None
+    for f in it["data"]["fields"]:
+        if f["value"] in (None, "", []):
+            continue
+        value = f["value"]
+        if f["kind"] == "file":
+            cv = Path(value)
+        elif f["id"] == "dateAvailable":
+            value = filler.us_date(str(value))
+        fields.append({"id": f["id"], "kind": f["kind"], "label": f["label"][:60], "value": value})
+    data = {"fields": fields, "cv": {"name": cv.name, "b64": base64.b64encode(cv.read_bytes()).decode()} if cv else None}
+    script = (WEB / f"fill-{it['route']}.js").read_text().replace("__DATA__", json.dumps(data, ensure_ascii=False))
+    store.finish(it["id"], "ready", "filled in Safari, waiting for the person to submit")
+    return PlainTextResponse(script, media_type="text/javascript")
+
+
+@app.post("/api/items/{item_id}/done", dependencies=[Depends(session)])
+def done_by_hand(item_id: int):
+    """The person submitted it in Safari. Their word records it, as with an unclear send."""
+    it = need(item_id)
+    if it["route"] not in forms.HAND or it["status"] not in ("ready", "failed"):
+        raise HTTPException(409, "nothing to record")
+    worker.outbox(cfg, it, worker.form_material(it["data"], it["route"]) + " (filled by Relevo in Safari, submitted by the person)")
+    store.finish(item_id, "sent", "submitted by the person in Safari")
+    return store.get(item_id)
 
 
 @app.get("/api/items/{item_id}/sent", dependencies=[Depends(session)])
