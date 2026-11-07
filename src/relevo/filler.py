@@ -173,6 +173,17 @@ async def _fill_breezy(page, f, value) -> bool:
     return ok
 
 
+def us_date(text: str) -> str:
+    """MM/DD/YYYY from the ways a person writes a date ("15 Nov 2026", "2026-11-15", "11/15/2026")."""
+    from datetime import datetime
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d %b %Y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text.strip(), fmt).strftime("%m/%d/%Y")
+        except ValueError:
+            pass
+    raise ValueError(f"not a date: {text}")
+
+
 async def _fill_bamboohr(page, f, value) -> bool:
     if f.kind == "file":
         await page.locator("input[type=file]").first.set_input_files(value)
@@ -195,6 +206,8 @@ async def _fill_bamboohr(page, f, value) -> bool:
     if f.kind == "single_choice":  # radios; a multi question keeps the option id as value, so pick by label
         await group.locator("xpath=ancestor::label").filter(has_text=re.compile(rf"^\s*{re.escape(value)}\s*$")).first.click()
         return await page.locator(f'input[name="{f.id}"]:checked').locator("xpath=ancestor::label").inner_text() == value
+    if f.id == "dateAvailable":
+        value = us_date(str(value))
     box = page.get_by_label("Date Available").first if f.id == "dateAvailable" else page.locator(f'[name="{f.id}"]').first
     await box.fill(str(value))
     if f.id == "dateAvailable":

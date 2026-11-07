@@ -1,5 +1,6 @@
 """From a candidate job to a panel. Rules that matter are code, so a model cannot talk its way past them."""
 import re
+from datetime import date
 from pathlib import Path
 
 from relevo import filler, forms, llm, route, track
@@ -83,7 +84,8 @@ def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, s
         form = forms.fetch(way, target)
         fields = [{"id": f.id, "label": f.label, "kind": f.kind, "options": list(f.options)} for f in form.fields]
         system = "You fill a job application form. One answer per field id; for options use the exact option text."
-        user = f"# Candidate\n{kit.facts(family)}\n\n# Job\n{job.get('description', '')}\n\n# Fields\n{fields}"
+        user = (f"Today is {date.today().isoformat()}.\n\n# Candidate\n{kit.facts(family)}\n\n"
+                f"# Job\n{job.get('description', '')}\n\n# Fields\n{fields}")
         drafted = llm.ask(system, user, llm.ANSWERS)["answers"]
         panel["form_url"] = form.url
         panel["fields"] = merge(form, drafted, cv)

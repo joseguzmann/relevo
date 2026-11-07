@@ -18,6 +18,17 @@ def berkshire_without_education():
     return data
 
 
+class Dates(unittest.TestCase):
+    def test_written_dates_become_us_format(self):
+        try:
+            from relevo.filler import us_date
+        except ImportError:
+            self.skipTest("playwright not installed here")
+        self.assertEqual(us_date("15 Nov 2026"), "11/15/2026")
+        self.assertEqual(us_date("2026-11-13"), "11/13/2026")
+        self.assertEqual(us_date("11/13/2026"), "11/13/2026")
+
+
 class ParseForm(unittest.TestCase):
     def test_standard_fields_and_page_names(self):
         form = bamboohr.parse_form(NEWS + "?source=x", DATA["newsmatics"])
