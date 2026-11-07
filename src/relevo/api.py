@@ -218,8 +218,10 @@ def fill_script(url: str, k: str):
     """What the Safari shortcut runs on the page open there: the approved answers and the CV, nothing else."""
     if not hmac.compare_digest(k.encode(), fill_key_file.read_text().strip().encode()):
         raise HTTPException(403)
-    it = next((i for i in store.list() if i["route"] in forms.HAND and i["status"] in ("ready", "failed")
-               and same_form(url, i["data"].get("target", ""))), None)
+    open_items = [i for i in store.list() if i["route"] in forms.HAND and i["status"] in ("ready", "failed")]
+    it = next((i for i in open_items if same_form(url, i["data"].get("target", ""))), None)
+    if it is None and not url and len(open_items) == 1:  # the shortcut sent no address: the page itself checks it
+        it = open_items[0]
     if it is None:
         return PlainTextResponse("completion('Relevo: esta página no tiene una postulación abierta en Relevo.');",
                                  media_type="text/javascript")
@@ -237,7 +239,7 @@ def fill_script(url: str, k: str):
         elif f["id"] == "dateAvailable":
             value = filler.us_date(str(value))
         fields.append({"id": f["id"], "kind": f["kind"], "label": f["label"][:60], "value": value})
-    data = {"fields": fields, "cv": {"name": cv.name, "b64": base64.b64encode(cv.read_bytes()).decode()} if cv else None}
+    data = {"page": it["data"].get("form_url") or it["data"]["target"], "fields": fields, "cv": {"name": cv.name, "b64": base64.b64encode(cv.read_bytes()).decode()} if cv else None}
     script = (WEB / f"fill-{it['route']}.js").read_text().replace("__DATA__", json.dumps(data, ensure_ascii=False))
     store.finish(it["id"], "ready", "filled in Safari, waiting for the person to submit")
     return PlainTextResponse(script, media_type="text/javascript")

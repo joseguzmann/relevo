@@ -11,6 +11,10 @@
   };
   const labelOf = input => (input.closest('label')?.innerText || '').trim();
 
+  const want = new URL(D.page);
+  if (location.host.toLowerCase() !== want.host.toLowerCase() || !location.pathname.startsWith(want.pathname)) {
+    return done(`Relevo: esta página no es la de la postulación abierta (${want.host}${want.pathname}).`);
+  }
   if (!document.querySelector('[name=firstName]')) {
     const open = [...document.querySelectorAll('button, a')].find(b => /apply for this job/i.test(b.innerText));
     if (open) open.click();
