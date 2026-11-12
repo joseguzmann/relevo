@@ -226,6 +226,18 @@ def send(item_id: int):
     return {"status": "sending"}
 
 
+@app.post("/api/items/{item_id}/trylive", dependencies=[Depends(session)])
+def trylive(item_id: int):
+    """Manual items: try to fill ANY form in the live browser (general filler). The person reviews + submits."""
+    it = need(item_id)
+    if it["route"] != "manual" and it["status"] not in ("manual", "failed"):
+        raise HTTPException(400, "this one already has a form or email route")
+    if not store.claim(item_id):
+        raise HTTPException(409, "already sent or being sent")
+    threading.Thread(target=worker.try_live, args=(cfg, store, item_id), daemon=True).start()
+    return {"status": "sending"}
+
+
 @app.get("/api/items/{item_id}/shot", dependencies=[Depends(session)])
 def shot(item_id: int):
     path = worker.after_shot(cfg, need(item_id)["id"])

@@ -546,3 +546,97 @@ def fill_live(form: Form, answers: dict, shot: str, after_shot: str = "", on_rea
     if form.missing(answers) or form.invalid(answers):
         raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
     return asyncio.run(_run_live(form, answers, shot, after_shot, on_ready, minutes))
+
+
+APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
+LOGIN_WALL = re.compile(r"sign in to apply|iniciar sesión|to apply on the company|easy apply|solicitud sencilla", re.I)
+
+
+async def _reach_form(page, url: str):
+    """Phase 1: open the job link and get to the actual form. Follows an external 'Apply' button (incl. out of a
+    LinkedIn job) and new tabs. Returns (status, page): status 'form' (a fillable page) or 'wall' (LinkedIn login /
+    Easy Apply — not ours) or 'none'."""
+    await page.goto(url, wait_until="domcontentloaded")
+    await page.wait_for_timeout(1500)
+    ctx = page.context
+    if await page.locator("input, textarea, select").count() >= 3:
+        return "form", page
+    btn = page.get_by_role("link", name=APPLY).or_(page.get_by_role("button", name=APPLY)).first
+    if await btn.count():
+        before = list(ctx.pages)
+        try:
+            await btn.click()
+        except Exception:
+            pass
+        await page.wait_for_timeout(3000)
+        extra = [p for p in ctx.pages if p not in before]
+        page = extra[-1] if extra else page
+        try:
+            await page.wait_for_load_state("domcontentloaded")
+        except Exception:
+            pass
+        await page.wait_for_timeout(1500)
+    body = ((await page.locator("body").inner_text()) or "")[:4000]
+    fields = await page.locator("input, textarea, select").count()
+    if "linkedin.com" in (page.url or "") and fields < 3 and LOGIN_WALL.search(body):
+        return "wall", page
+    return ("form", page) if fields >= 3 else ("none", page)
+
+
+async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str,
+                            on_ready, minutes: int) -> Result:
+    """Fill ANY form in a headed browser: reach the form, scan fields, map them with the LLM (or a saved recipe for
+    this host), fill, then the person solves the captcha and submits. Learns the host on success."""
+    from patchright.async_api import async_playwright as live_playwright
+    from relevo import general
+
+    result = Result()
+    async with live_playwright() as p:
+        ctx = await p.chromium.launch_persistent_context(
+            user_data_dir=f"/tmp/live-{os.getpid()}", headless=False, no_viewport=True,
+            args=["--no-sandbox", "--start-maximized"])
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        status, page = await _reach_form(page, url)
+        if status == "wall":
+            result.confirmation = "wall"
+            await ctx.close()
+            return result
+        if status == "none":
+            result.confirmation = "no-form"
+            await ctx.close()
+            return result
+        raw = await general.read_fields(page)
+        loop = asyncio.get_event_loop()
+        plan_items = await loop.run_in_executor(None, general.plan, raw, facts, cv_path, job)
+        fill = await general.fill_fields(page, raw, plan_items, cv_path)
+        result.verified = {lbl: True for lbl in fill["filled"]}
+        result.unknown = fill["skipped"]
+        result.confirmation = f"llené {len(fill['filled'])}/{len(raw)}; revisa: {', '.join(fill['skipped'][:6])}"
+        try:
+            await page.screenshot(path=shot, full_page=True)
+        except Exception:
+            pass
+        if on_ready:
+            on_ready()
+        for _ in range(minutes * 20):
+            await asyncio.sleep(3)
+            try:
+                text = await page.locator("body").inner_text()
+            except Exception:
+                break
+            if looks_sent(text):
+                result.submitted = result.confirmed = True
+                result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
+                general.save_recipe(data, page.url, raw, plan_items, fill)
+                try:
+                    await page.screenshot(path=after_shot, full_page=True)
+                except Exception:
+                    pass
+                break
+        await ctx.close()
+    return result
+
+
+def fill_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str = "",
+                      on_ready=None, minutes: int = 30) -> Result:
+    return asyncio.run(_run_live_general(url, facts, cv_path, job, data, shot, after_shot, on_ready, minutes))

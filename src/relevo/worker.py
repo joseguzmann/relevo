@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from relevo import filler, forms, mailer, prepare, push
+from relevo import filler, forms, mailer, prepare, push, track
 from relevo.store import Store
 
 log = logging.getLogger("relevo.worker")
@@ -181,6 +181,42 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
                                              f"Page: {result.confirmation}")
     except Exception as e:
         store.finish(item_id, "unclear", f"stopped mid-send, check before retrying: {str(e)[:200]}")
+
+
+def try_live(cfg: Config, store: Store, item_id: int) -> None:
+    """General live fill of ANY form (manual items): reach the form from the job link, fill what the LLM can map, then
+    the person reviews, solves the captcha and submits in the live view. LinkedIn login / Easy Apply falls back to 'a mano'."""
+    item = store.get(item_id)
+    panel = item["data"]
+    job = panel.get("job", {})
+    url = job.get("url") or panel.get("target")
+    company = job.get("company", "")
+    try:
+        kit = prepare.Kit(cfg.kit)
+        family = kit.family(job)
+        facts = kit.facts(family)
+        codes = panel.get("codes") or {"pdf": track.new_code(), "form": track.new_code()}
+        cv = track.stamp_cv(kit.cv(family), Path(cfg.data) / "cv" / str(job.get("id", item_id)), codes["pdf"])
+        shot = str(Path(cfg.data) / f"shot-{item_id}.png")
+
+        def ready():
+            store.finish(item_id, "captcha", "llené lo que supe: abre la vista, revisa los campos que faltan, resuelve el captcha y envía")
+            push.send(store, push.keys(cfg.data)[0], cfg.site, "Revisa y envía",
+                      f"{company}: ábrela, completa lo que no supe, resuelve el captcha y envía", item_id)
+
+        result = filler.fill_live_general(url, facts, cv, job, cfg.data, shot,
+                                          after_shot=str(after_shot(cfg, item_id)), on_ready=ready)
+        if result.confirmation == "wall":
+            store.finish(item_id, "manual", "es LinkedIn/login (Easy Apply): esta se postula a mano")
+        elif result.confirmation == "no-form":
+            store.finish(item_id, "manual", "no encontré un formulario que llenar en ese link: a mano")
+        elif result.confirmed:
+            outbox(cfg, item, f"General form by Relevo at {url}")
+            store.finish(item_id, "sent", result.confirmation[:200])
+        else:
+            store.finish(item_id, "failed", "no se envió (captcha/Submit no completado a tiempo)")
+    except Exception as e:
+        store.finish(item_id, "manual", f"no se pudo llenar en vivo ({str(e)[:140]}); a mano")
 
 
 def loop(cfg: Config, store: Store, pem: str) -> None:

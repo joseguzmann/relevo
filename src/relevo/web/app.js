@@ -115,7 +115,18 @@ async function detail(id) {
     el('label', {className: 'f', textContent: f.label + (f.required ? ' *' : '')}),
     el('div', {className: 'tag ' + f.state, textContent: STATE[f.state]}), fieldInput(f, changes),
     f.source ? el('div', {className: 'soft', textContent: f.source}) : null)));
-  if (item.status === 'manual') views.push(el('p', {className: 'soft', textContent: 'Esta se postula a mano.'}));
+  if (item.status === 'manual') {
+    const msg = el('div', {className: 'soft'});
+    const open = el('a', {href: d.job?.url || d.target || '#', target: '_blank', rel: 'noopener', className: 'button', textContent: 'Abrir la vacante'});
+    const tryb = el('button', {className: 'main', textContent: 'Intentar llenar en vivo', onclick: async () => {
+      working(tryb, 'Llenando…'); msg.className = 'soft'; msg.textContent = 'Siguiendo el link y llenando el formulario…';
+      try { await api(`/items/${id}/trylive`, {method: 'POST'}); poll(id, msg); }
+      catch (e) { tryb.disabled = false; tryb.textContent = 'Intentar llenar en vivo'; msg.className = 'soft missing'; msg.textContent = e.body?.detail || 'No se pudo'; }
+    }});
+    views.push(el('div', {className: 'card'},
+      el('p', {textContent: 'Relevo no reconoció un ATS. Puede intentar abrir el link, llenar el formulario que encuentre y avisarte para que revises, resuelvas el captcha y envíes. LinkedIn Easy Apply no: eso es a mano.'}),
+      el('div', {className: 'bar'}, el('div', {}, msg, el('div', {className: 'actions'}, open, tryb)))));
+  }
   const save = () => api('/items/' + id, {method: 'PUT', body: JSON.stringify({fields: changes, email: mail, accepted_unknown: [...accepted]})});
   if (['ready', 'failed'].includes(item.status)) {
     const msg = el('div', {className: 'soft'});
