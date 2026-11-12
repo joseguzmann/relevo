@@ -117,36 +117,7 @@ async function detail(id) {
     f.source ? el('div', {className: 'soft', textContent: f.source}) : null)));
   if (item.status === 'manual') views.push(el('p', {className: 'soft', textContent: 'Esta se postula a mano.'}));
   const save = () => api('/items/' + id, {method: 'PUT', body: JSON.stringify({fields: changes, email: mail, accepted_unknown: [...accepted]})});
-  if (['ready', 'failed'].includes(item.status) && HAND.includes(item.route)) {
-    const msg = el('div', {className: 'soft', textContent: item.reason || ''});
-    const setup = el('details', {className: 'history', ontoggle: async e => {
-      if (!e.target.open || setup.querySelector('pre')) return;
-      const {key} = await api('/fillkey');
-      const url = `${location.origin}/api/fill/script?k=${key}&url=`;
-      setup.append(el('div', {className: 'card'},
-        el('p', {textContent: 'Una sola vez, en la app Atajos: nuevo atajo «Rellenar con Relevo».'}),
-        el('ol', {}, ...['Detalles del atajo: activa «Mostrar en hoja de compartir», acepta «Páginas web de Safari».',
-          'Acción «Obtener contenido de URL»: la URL de abajo y, pegada al final, la variable «URL» de la entrada del atajo.',
-          'Acción «Ejecutar JavaScript en página web»: borra el código de ejemplo y pon solo la variable «Contenido de URL».']
-          .map(t => el('li', {textContent: t}))),
-        el('pre', {className: 'soft', textContent: url}),
-        el('button', {textContent: 'Copiar URL', onclick: () => navigator.clipboard.writeText(url)})));
-    }}, el('summary', {textContent: 'Configurar el atajo de Safari'}));
-    views.push(el('h2', {textContent: 'Esta la envías tú'}), el('div', {className: 'card'},
-      el('p', {textContent: 'Tiene captcha. Ábrela en Safari, toca Compartir → «Rellenar con Relevo», resuelve el captcha y toca Submit. Luego vuelve y toca «Ya lo envié».'})), setup);
-    const open = el('button', {className: 'main', textContent: 'Abrir en Safari', onclick: async () => {
-      await save().catch(() => {});
-      window.open(d.form_url || d.target, '_blank');
-    }});
-    const sent = el('button', {textContent: 'Ya lo envié', onclick: async () => {
-      if (!confirm('¿Ya tocaste Submit y la página dijo que se envió?')) return;
-      await api(`/items/${id}/done`, {method: 'POST'}); detail(id);
-    }});
-    const drop = el('button', {textContent: 'Descartar', onclick: async () => {
-      await api(`/items/${id}/discard`, {method: 'POST'}); location.hash = '';
-    }});
-    views.push(el('div', {className: 'bar'}, el('div', {}, msg, el('div', {className: 'actions'}, drop, sent, open))));
-  } else if (['ready', 'failed'].includes(item.status)) {
+  if (['ready', 'failed'].includes(item.status)) {
     const msg = el('div', {className: 'soft'});
     const send = el('button', {className: 'main', textContent: item.route === 'email' ? 'Enviar correo' : 'Postular', onclick: async () => {
       const label = send.textContent;
@@ -174,23 +145,17 @@ async function detail(id) {
     views.push(el('div', {className: 'bar'}, el('div', {}, msg, busy)));
     poll(id, msg);
   } else if (item.status === 'captcha') {
-    const msg = el('p', {className: 'soft', textContent: 'Toca la imagen como si fuera la página: primero la casilla, luego lo que pida. Se actualiza sola.'});
-    const img = el('img', {className: 'shot live', alt: 'La página con el captcha'});
-    img.onclick = async e => {
-      const r = img.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-      const dot = el('span', {className: 'tapdot'});
-      dot.style.left = (x * 100) + '%'; dot.style.top = (y * 100) + '%';
-      img.parentElement.append(dot); setTimeout(() => dot.remove(), 700);
-      await api(`/items/${id}/tap`, {method: 'POST', body: JSON.stringify({x, y})}).catch(() => {});
-    };
-    views.push(el('h2', {textContent: 'Resuelve el captcha'}), el('div', {className: 'card'}, msg, el('div', {className: 'livebox'}, img)));
+    const url = '/live/vnc_lite.html?path=live-ws&autoconnect=true&resize=scale&reconnect=true';
+    const frame = el('iframe', {className: 'liveframe', src: url, allow: 'clipboard-read; clipboard-write'});
+    const full = el('button', {className: 'main', textContent: 'Abrir en pantalla completa', onclick: () => window.open(url, '_blank')});
+    views.push(el('h2', {textContent: 'Resuelve el captcha y envía'}), el('div', {className: 'card'},
+      el('p', {textContent: 'Relevo ya llenó el formulario en un navegador en la Gateway. Baja hasta el captcha, resuélvelo y toca Submit tú. Cuando la página confirme el envío, esta pantalla pasa a «Enviada».'}),
+      frame, el('div', {className: 'bar'}, el('div', {}, full))));
     (async () => {
       while (location.hash.slice(1) === String(id)) {
-        img.src = `/api/items/${id}/live?t=${Date.now()}`;
-        await new Promise(r => setTimeout(r, 900));
+        await new Promise(r => setTimeout(r, 2500));
         const it = await api('/items/' + id).catch(() => null);
-        if (it && it.status !== 'captcha') { if (it.status === 'sending') return poll(id, msg); return detail(id); }
+        if (it && it.status !== 'captcha') return detail(id);
       }
     })();
   } else if (item.status === 'code') {

@@ -72,7 +72,7 @@ def session(request: Request) -> None:
 # The live apply browser (a headed container on the Gateway that Relevo fills; the person solves the captcha and
 # submits by hand). It is reached ONLY through here, behind the passcode, so it is phone-only: no public endpoint.
 # The host bridge launches `relevo-live` on relevo-net; these routes proxy to it.
-LIVE_HOST = os.environ.get("RELEVO_LIVE_HOST", "relevo-live:6083")
+LIVE_HOST = os.environ.get("RELEVO_LIVE_HOST", "127.0.0.1:6083")
 
 
 @app.get("/live/{path:path}", dependencies=[Depends(session)])
@@ -215,8 +215,6 @@ def send(item_id: int):
     it = need(item_id)
     if it["route"] == "manual":
         raise HTTPException(400, "this one has no way out from here")
-    if it["route"] in forms.HAND:
-        raise HTTPException(400, "Esta se llena en Safari con el atajo y la envías tú.")
     if it["route"] == "email" and not Path(cfg.token).exists():
         raise HTTPException(503, "Gmail todavía no está conectado. No se envió nada.")
     missing = blockers(it)

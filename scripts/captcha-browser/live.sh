@@ -13,7 +13,7 @@ ssh gateway "mkdir -p $D"
 scp -q live.py "$ANS" "$CV" gateway:$D/ >/dev/null
 ssh gateway "mv -f $D/$(basename "$ANS") $D/answers.json; mv -f $D/$(basename "$CV") $D/cv.pdf
   docker rm -f relevo-live >/dev/null 2>&1 || true
-  docker run -d --name relevo-live --network ipfort-net -p 127.0.0.1:6084:6083 \
+  docker run -d --name relevo-live --network ipfort-net \
     -v /srv/apps/ip-fort/android/resolv.conf:/etc/resolv.conf:ro -v $D:/live \
     --entrypoint sh vigia-linkedin-mcp -c '
       Xvfb :99 -screen 0 1440x900x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
@@ -21,7 +21,7 @@ ssh gateway "mv -f $D/$(basename "$ANS") $D/answers.json; mv -f $D/$(basename "$
       x11vnc -display :99 -forever -shared -nopw -quiet -bg >/tmp/x11vnc.log 2>&1
       websockify --web=/usr/share/novnc 6083 localhost:5900 >/tmp/ws.log 2>&1 &
       DISPLAY=:99 /app/.venv/bin/python /live/live.py \"$URL\" /live/answers.json /live/cv.pdf /live/result.json
-    ' >/dev/null"
-echo "tunnel: ssh -L 6084:127.0.0.1:6084 gateway"
-echo "open:   http://127.0.0.1:6084/vnc_lite.html?resize=scale"
+    ' >/dev/null
+  docker network connect deploy_relevo-net relevo-live"
+echo "phone (logged into Relevo): https://relevo.joseguzman.dev/live/vnc_lite.html?path=live-ws&autoconnect=true&resize=scale"
 echo "watch:  ssh gateway docker logs -f relevo-live"

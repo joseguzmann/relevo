@@ -141,26 +141,35 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             return
         answers = {f["id"]: f["value"] for f in panel["fields"]}
         shot = str(Path(cfg.data) / f"shot-{item_id}.png")
+        company = panel.get("job", {}).get("company", "")
+
+        if item["route"] in forms.HAND:
+            # Captcha ATS: Relevo fills a headed browser on the Gateway; the person opens the live view (only through
+            # the app, behind the passcode), solves the captcha and clicks Submit. The browser is shared via /live.
+            def live_ready():
+                store.finish(item_id, "captcha", "lleno: abre la vista para resolver el captcha y enviar")
+                push.send(store, push.keys(cfg.data)[0], cfg.site, "Resuelve el captcha",
+                          f"{company}: ábrela en la app, resuelve el captcha y envía", item_id)
+
+            result = filler.fill_live(form, answers, shot, after_shot=str(after_shot(cfg, item_id)), on_ready=live_ready)
+            if result.failed or result.unknown:
+                store.finish(item_id, "failed", f"no se llenó: fallidos {result.failed}, sin dato {result.unknown}")
+            elif result.confirmed:
+                outbox(cfg, item, form_material(panel, item["route"]))
+                store.finish(item_id, "sent", result.confirmation[:200])
+            else:
+                store.finish(item_id, "failed", "no se envió (captcha/Submit no completado a tiempo)")
+            return
+
         def asked():
             store.finish(item_id, "code", "the ATS emailed a code to confirm the application")
             push.send(store, push.keys(cfg.data)[0], cfg.site, "Falta el código",
-                      f"{panel.get('job', {}).get('company', '')}: escribe el código que llegó al correo", item_id)
+                      f"{company}: escribe el código que llegó al correo", item_id)
 
-        def captcha_start():
-            store.finish(item_id, "captcha", "the form shows a captcha: the person solves it from the phone")
-            push.send(store, push.keys(cfg.data)[0], cfg.site, "Falta el captcha",
-                      f"{panel.get('job', {}).get('company', '')}: resuélvelo en la app para enviar", item_id)
-
-        captcha = {"live": str(live_file(cfg, item_id)), "taps": str(taps_file(cfg, item_id)), "start": captcha_start,
-                   "done": lambda: store.finish(item_id, "sending", "captcha solved, sending")}
         result = filler.fill(form, answers, shot, submit=True, accepted=panel.get("accepted_unknown", []),
-                             after_shot=str(after_shot(cfg, item_id)), code_file=str(code_file(cfg, item_id)), asked=asked,
-                             captcha=captcha)
-        live_file(cfg, item_id).unlink(missing_ok=True)
+                             after_shot=str(after_shot(cfg, item_id)), code_file=str(code_file(cfg, item_id)), asked=asked)
         evidence(cfg, item_id).write_text(json.dumps(result.requests, ensure_ascii=False, indent=1))
-        if not result.submitted and result.confirmation.startswith("captcha not solved"):
-            store.finish(item_id, "failed", "the captcha was not solved in 10 minutes; nothing was sent")
-        elif result.failed or (result.unknown and not result.submitted):
+        if result.failed or (result.unknown and not result.submitted):
             store.finish(item_id, "failed", f"not sent: failed {result.failed}, unknown {result.unknown}")
         elif result.confirmed:
             outbox(cfg, item, form_material(panel, item["route"]))

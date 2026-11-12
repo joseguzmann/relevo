@@ -1,5 +1,6 @@
 """Fills a form from its fields and approved answers, checks each one, and submits only if told to."""
 import asyncio
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -492,3 +493,56 @@ def looks_sent(text: str) -> bool:
 def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: tuple = (), after_shot: str = "",
          code_file: str = "", asked=None, captcha: dict | None = None) -> Result:
     return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot, 45, code_file, asked, captcha))
+
+
+async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_ready, minutes: int) -> Result:
+    """Fill a captcha form in a HEADED anti-detect browser on the real X display, then leave it open for the person to
+    solve the captcha and click Submit over VNC. Reuses the same _open/_fill_field as the headless path, so the fill
+    is the exact tested one. Nothing is submitted here: the person submits in the live view; this only watches for the
+    success page. (Relevo's idea, proven 2026-11-12: headed + a human beats the headless screenshot relay.)"""
+    from patchright.async_api import async_playwright as live_playwright
+
+    result = Result()
+    async with live_playwright() as p:
+        ctx = await p.chromium.launch_persistent_context(
+            user_data_dir=f"/tmp/live-{os.getpid()}", headless=False, no_viewport=True,
+            args=["--no-sandbox", "--start-maximized"])
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        await _open(page, form)
+        for f in form.fields:
+            if answers.get(f.id) in (None, "", []):
+                continue
+            try:
+                result.verified[f.label] = await _fill_field(page, f, answers[f.id], form.ats)
+            except Exception as e:
+                result.verified[f.label] = False
+                print(f"field failed: {f.label}: {str(e)[:160]}")
+        result.unknown = await _unknown(page, form)
+        try:
+            await page.screenshot(path=shot, full_page=True)
+        except Exception:
+            pass
+        if on_ready:
+            on_ready()  # the form is filled; the app now shows "open the live view to solve the captcha and submit"
+        for _ in range(minutes * 20):  # poll up to `minutes`, person-paced
+            await asyncio.sleep(3)
+            try:
+                text = await page.locator("body").inner_text()
+            except Exception:
+                break
+            if looks_sent(text):
+                result.submitted = result.confirmed = True
+                result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
+                try:
+                    await page.screenshot(path=after_shot, full_page=True)
+                except Exception:
+                    pass
+                break
+        await ctx.close()
+    return result
+
+
+def fill_live(form: Form, answers: dict, shot: str, after_shot: str = "", on_ready=None, minutes: int = 30) -> Result:
+    if form.missing(answers) or form.invalid(answers):
+        raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
+    return asyncio.run(_run_live(form, answers, shot, after_shot, on_ready, minutes))
