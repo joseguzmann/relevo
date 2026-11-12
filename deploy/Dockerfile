@@ -1,7 +1,8 @@
 FROM mcr.microsoft.com/playwright/python:v1.49.0-noble
 # Captcha "live apply": a headed patchright browser Relevo fills, shown over VNC through the app (phone-only).
-RUN apt-get update && apt-get install -y --no-install-recommends xvfb x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
+# pip first (clean), then the VNC apt packages (their python3-* land in dist-packages; pip's in /usr/local win).
 RUN pip install --no-cache-dir --break-system-packages playwright==1.49.0 patchright fastapi "uvicorn[standard]" pywebpush cryptography pypdf
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1500 relevo
 USER relevo
 RUN patchright install chromium
