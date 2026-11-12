@@ -151,9 +151,11 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
                 push.send(store, push.keys(cfg.data)[0], cfg.site, "Resuelve el captcha",
                           f"{company}: ábrela en la app, resuelve el captcha y envía", item_id)
 
+            # `unknown` fields (ones the form asks that the panel did not have) are NOT a failure here: the person
+            # fills them in the live view before submitting. Only a field that should have filled but did not fails.
             result = filler.fill_live(form, answers, shot, after_shot=str(after_shot(cfg, item_id)), on_ready=live_ready)
-            if result.failed or result.unknown:
-                store.finish(item_id, "failed", f"no se llenó: fallidos {result.failed}, sin dato {result.unknown}")
+            if result.failed:
+                store.finish(item_id, "failed", f"no se llenó: campos fallidos {result.failed}")
             elif result.confirmed:
                 outbox(cfg, item, form_material(panel, item["route"]))
                 store.finish(item_id, "sent", result.confirmation[:200])
