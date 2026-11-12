@@ -552,35 +552,53 @@ APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
 LOGIN_WALL = re.compile(r"sign in to apply|iniciar sesión|to apply on the company|easy apply|solicitud sencilla", re.I)
 
 
+FIND_APPLY_JS = r"""() => {
+  const re = /\b(apply|postul|aplicar|solicitar)\b/i;
+  const els = [...document.querySelectorAll('a, button, [role=button]')];
+  const m = els.find(e => re.test((e.innerText || e.getAttribute('aria-label') || '').trim()) &&
+                          !/sign in|log in|iniciar/i.test(e.innerText || ''));
+  if (!m) return null;
+  m.setAttribute('data-relevo-apply', '1');
+  return '[data-relevo-apply="1"]';
+}"""
+
+
 async def _reach_form(page, url: str):
     """Phase 1: open the job link and get to the actual form. Follows an external 'Apply' button (incl. out of a
-    LinkedIn job) and new tabs. Returns (status, page): status 'form' (a fillable page) or 'wall' (LinkedIn login /
-    Easy Apply — not ours) or 'none'."""
+    LinkedIn job) and new tabs. Returns (status, page): 'form' (a fillable page), 'wall' (LinkedIn login / Easy
+    Apply — not ours) or 'none'. Uses page.evaluate for counts (patchright's Locator.count is broken here)."""
+    async def nfields(pg):
+        try:
+            return await pg.evaluate("() => document.querySelectorAll('input, textarea, select').length")
+        except Exception:
+            return 0
+
     await page.goto(url, wait_until="domcontentloaded")
     await page.wait_for_timeout(1500)
     ctx = page.context
-    if await page.locator("input, textarea, select").count() >= 3:
+    if await nfields(page) >= 3:
         return "form", page
-    btn = page.get_by_role("link", name=APPLY).or_(page.get_by_role("button", name=APPLY)).first
-    if await btn.count():
-        before = list(ctx.pages)
+    before = list(ctx.pages)
+    apply_sel = await page.evaluate(FIND_APPLY_JS)
+    if apply_sel:
         try:
-            await btn.click()
+            await page.locator(apply_sel).first.click(timeout=5000)
         except Exception:
             pass
         await page.wait_for_timeout(3000)
-        extra = [p for p in ctx.pages if p not in before]
-        page = extra[-1] if extra else page
-        try:
-            await page.wait_for_load_state("domcontentloaded")
-        except Exception:
-            pass
-        await page.wait_for_timeout(1500)
+        extra = [pg for pg in ctx.pages if pg not in before]
+        if extra:
+            page = extra[-1]
+            try:
+                await page.wait_for_load_state("domcontentloaded")
+            except Exception:
+                pass
+            await page.wait_for_timeout(1500)
     body = ((await page.locator("body").inner_text()) or "")[:4000]
-    fields = await page.locator("input, textarea, select").count()
-    if "linkedin.com" in (page.url or "") and fields < 3 and LOGIN_WALL.search(body):
+    n = await nfields(page)
+    if "linkedin.com" in (page.url or "") and n < 3 and LOGIN_WALL.search(body):
         return "wall", page
-    return ("form", page) if fields >= 3 else ("none", page)
+    return ("form", page) if n >= 3 else ("none", page)
 
 
 async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str,

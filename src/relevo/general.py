@@ -15,6 +15,9 @@ SCAN_JS = r"""() => {
   const esc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   const sel = (el) => {
     if (el.id) return '#' + esc(el.id);
+    // radios/checkboxes share a name: pin the option by value and skip hidden twins
+    if ((el.type === 'radio' || el.type === 'checkbox') && el.name)
+      return 'input[name="' + el.name.replace(/"/g, '\\"') + '"]' + (el.value ? '[value="' + el.value.replace(/"/g, '\\"') + '"]' : '') + ':not([type=hidden])';
     if (el.name) return el.tagName.toLowerCase() + '[name="' + el.name.replace(/"/g, '\\"') + '"]';
     const path = []; let e = el;
     while (e && e.tagName && e.tagName.toLowerCase() !== 'body' && path.length < 6) {
@@ -124,11 +127,16 @@ async def _fill_one(page, f: dict, value, cv_path: str) -> bool:
             await page.locator(f["selector"]).select_option(str(value))
         return True
     if t in ("radio", "checkbox"):
-        want = [str(v) for v in (value if isinstance(value, list) else [value])]
+        opts = f.get("options", [])
+        want = [str(v).strip() for v in (value if isinstance(value, list) else [value])]
+        affirm = {"yes", "sí", "si", "true", "1", "on", "acepto", "agree", "i agree"}
+        if t == "checkbox" and len(opts) == 1 and want and want[0].lower() in affirm:
+            await page.locator(opts[0]["selector"]).first.check(force=True)
+            return True
         hit = False
-        for o in f.get("options", []):
+        for o in opts:
             if str(o.get("label", "")).strip() in want or str(o.get("value", "")) in want:
-                await page.locator(o["selector"]).check(force=True)
+                await page.locator(o["selector"]).first.check(force=True)
                 hit = True
         return hit
     box = page.locator(f["selector"]).first
