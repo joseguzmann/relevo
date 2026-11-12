@@ -1,4 +1,5 @@
 """The API the phone talks to, and the app's static files. Every route but login needs a session."""
+import asyncio
 import hashlib
 import json
 import hmac
@@ -6,9 +7,11 @@ import os
 import secrets
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -56,11 +59,74 @@ def sign(expires: int) -> str:
     return f"{expires}.{hmac.new(SECRET, str(expires).encode(), hashlib.sha256).hexdigest()}"
 
 
-def session(request: Request) -> None:
-    raw = request.cookies.get("relevo", "")
+def valid_session(raw: str) -> bool:
     expires = raw.split(".")[0]
-    if not expires.isdigit() or int(expires) < time.time() or not hmac.compare_digest(raw, sign(int(expires))):
+    return expires.isdigit() and int(expires) >= time.time() and hmac.compare_digest(raw, sign(int(expires)))
+
+
+def session(request: Request) -> None:
+    if not valid_session(request.cookies.get("relevo", "")):
         raise HTTPException(401)
+
+
+# The live apply browser (a headed container on the Gateway that Relevo fills; the person solves the captcha and
+# submits by hand). It is reached ONLY through here, behind the passcode, so it is phone-only: no public endpoint.
+# The host bridge launches `relevo-live` on relevo-net; these routes proxy to it.
+LIVE_HOST = os.environ.get("RELEVO_LIVE_HOST", "relevo-live:6083")
+
+
+@app.get("/live/{path:path}", dependencies=[Depends(session)])
+async def live_static(path: str, request: Request):
+    """Serve the noVNC page and its assets from the live container, only to an authenticated session."""
+    url = f"http://{LIVE_HOST}/{path or 'vnc_lite.html'}"
+    if request.url.query:
+        url += "?" + request.url.query
+
+    def fetch():
+        with urllib.request.urlopen(url, timeout=15) as r:
+            return r.read(), r.headers.get_content_type()
+
+    try:
+        body, ctype = await run_in_threadpool(fetch)
+    except Exception:
+        raise HTTPException(502, "El navegador en vivo no está arriba.")
+    return Response(content=body, media_type=ctype)
+
+
+@app.websocket("/live-ws")
+async def live_ws(ws: WebSocket):
+    """Bridge the browser's VNC websocket to the live container. Rejects anyone without a valid session cookie."""
+    import websockets
+
+    if not valid_session(ws.cookies.get("relevo", "")):
+        await ws.close(code=1008)
+        return
+    await ws.accept(subprotocol="binary")
+    try:
+        async with websockets.connect(f"ws://{LIVE_HOST}/websockify", subprotocols=["binary"],
+                                      max_size=None, open_timeout=15) as up:
+            async def c2s():
+                try:
+                    while True:
+                        await up.send(await ws.receive_bytes())
+                except Exception:
+                    pass
+
+            async def s2c():
+                try:
+                    async for m in up:
+                        await ws.send_bytes(m)
+                except Exception:
+                    pass
+
+            await asyncio.gather(c2s(), s2c())
+    except Exception:
+        pass
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 @app.post("/api/login")
