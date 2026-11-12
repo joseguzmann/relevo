@@ -203,7 +203,7 @@ async def edit(item_id: int, request: Request):
 
 def blockers(it: dict) -> list[str]:
     panel = it["data"]
-    out = [f["label"] for f in panel.get("fields", []) if f["required"] and f["value"] in (None, "", [])]
+    out = [f.get("label", "") for f in panel.get("fields", []) if f.get("required") and f.get("value") in (None, "", [])]
     out += [u[:80] for u in panel.get("unknown", []) if u not in panel.get("accepted_unknown", [])]
     if it["route"] == "email" and not all(panel.get("email", {}).get(k) for k in ("to", "subject", "body")):
         out.append("email incomplete")
