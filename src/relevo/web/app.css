@@ -32,3 +32,8 @@ a{color:var(--brand)}
 .livebar .livebtn { flex: 0 0 auto; width: 48px; font-size: 20px; padding: 10px 0; }
 .livebar .livemsg { flex: 1; min-width: 0; margin: 0; }
 .livebar .livesend { flex: 0 0 auto; min-width: 110px; }
+
+/* full-screen overlay for the live captcha view: the browser fills the screen, the control bar is pinned at the bottom */
+.liveover { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+  background: #0d1117; padding: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+.liveover .liveframe { flex: 1; height: auto; min-height: 0; margin: 0 0 8px; }

@@ -166,8 +166,16 @@ async function detail(id) {
       working(sendb, 'Enviando…'); msg.textContent = 'Relevo está enviando…';
       await cmd('submit'); poll(id, msg);
     }});
-    views.push(el('div', {className: 'livewrap'}, frame,
-      el('div', {className: 'livebar'}, down, up, msg, sendb)));
+    const close = el('button', {className: 'livebtn', textContent: '✕', title: 'Volver', onclick: () => detail(id)});
+    const overlay = el('div', {className: 'liveover'}, frame,
+      el('div', {className: 'livebar'}, down, up, msg, sendb, close));
+    document.body.append(overlay);  // full-screen overlay so nothing above pushes the controls off-screen
+    const stop = setInterval(async () => {
+      if (location.hash.slice(1) !== String(id)) { overlay.remove(); clearInterval(stop); return; }
+      const it = await api('/items/' + id).catch(() => null);
+      if (it && it.status !== 'captcha') { overlay.remove(); clearInterval(stop); detail(id); }
+    }, 2500);
+    return;  // the overlay IS the view; skip the normal detail layout
     (async () => {
       while (location.hash.slice(1) === String(id)) {
         await new Promise(r => setTimeout(r, 2500));
