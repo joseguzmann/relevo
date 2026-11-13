@@ -5,6 +5,7 @@ RUN pip install --no-cache-dir --break-system-packages playwright==1.49.0 patchr
 RUN apt-get update && apt-get install -y --no-install-recommends xvfb x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1500 relevo
 USER relevo
+RUN playwright install chromium chromium-headless-shell
 RUN patchright install chromium
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH=/home/relevo/.local/bin:$PATH PYTHONPATH=/app/src DISPLAY=:99 PYTHONUNBUFFERED=1
