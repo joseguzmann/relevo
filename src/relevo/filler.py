@@ -591,11 +591,16 @@ async def _live_wait(page, cmd_file, after_shot, minutes, result, on_success=Non
                 cmd = Path(cmd_file).read_text().strip()
                 Path(cmd_file).unlink(missing_ok=True)
                 if cmd in ("down", "up"):
-                    try:
-                        await page.mouse.move(200, 700)
-                        await page.mouse.wheel(0, 700 if cmd == "down" else -700)
+                    dy = 600 if cmd == "down" else -600
+                    try:  # scroll the window AND the biggest scrollable container (some forms scroll an inner div)
+                        await page.evaluate("""(dy) => {
+                          window.scrollBy(0, dy);
+                          const s = [...document.querySelectorAll('*')].filter(e =>
+                            e.scrollHeight > e.clientHeight + 40 && /auto|scroll/.test(getComputedStyle(e).overflowY));
+                          if (s.length) s.sort((a, b) => b.scrollHeight - a.scrollHeight)[0].scrollBy(0, dy);
+                        }""", dy)
                     except Exception:
-                        await page.evaluate(f"() => window.scrollBy(0, {700 if cmd == 'down' else -700})")
+                        pass
                 elif cmd == "submit":
                     clicked = await _click_submit(page) or clicked
         except Exception:

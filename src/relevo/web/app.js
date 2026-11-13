@@ -159,18 +159,15 @@ async function detail(id) {
     const url = '/live/vnc_lite.html?path=live-ws&autoconnect=true&resize=scale&reconnect=true';
     const frame = el('iframe', {className: 'liveframe', src: url, allow: 'clipboard-read; clipboard-write'});
     const cmd = (c) => api(`/items/${id}/livecmd`, {method: 'POST', body: JSON.stringify({cmd: c})}).catch(() => {});
-    const up = el('button', {textContent: '↑ subir', onclick: () => cmd('up')});
-    const down = el('button', {textContent: '↓ bajar', onclick: () => cmd('down')});
-    const full = el('button', {textContent: 'Pantalla completa', onclick: () => window.open(url, '_blank')});
-    const msg = el('div', {className: 'soft'});
-    const sendb = el('button', {className: 'main', textContent: 'Enviar', onclick: async () => {
-      working(sendb, 'Enviando…'); msg.textContent = 'Relevo está tocando Submit…';
+    const up = el('button', {className: 'livebtn', textContent: '↑', onclick: () => cmd('up')});
+    const down = el('button', {className: 'livebtn', textContent: '↓', onclick: () => cmd('down')});
+    const msg = el('div', {className: 'soft livemsg'});
+    const sendb = el('button', {className: 'main livesend', textContent: 'Enviar', onclick: async () => {
+      working(sendb, 'Enviando…'); msg.textContent = 'Relevo está enviando…';
       await cmd('submit'); poll(id, msg);
     }});
-    views.push(el('h2', {textContent: 'Resuelve el captcha y envía'}), el('div', {className: 'card'},
-      el('p', {textContent: 'El formulario ya está lleno. Usa ↓/↑ para moverte, resuelve el captcha («I\'m not a robot») con el dedo, y toca «Enviar»: Relevo hace el Submit y registra el envío. Tú solo resuelves el captcha.'}),
-      frame,
-      el('div', {className: 'bar'}, el('div', {}, msg, el('div', {className: 'actions'}, up, down, full, sendb)))));
+    views.push(el('div', {className: 'livewrap'}, frame,
+      el('div', {className: 'livebar'}, down, up, msg, sendb)));
     (async () => {
       while (location.hash.slice(1) === String(id)) {
         await new Promise(r => setTimeout(r, 2500));

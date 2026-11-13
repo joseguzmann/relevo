@@ -24,3 +24,11 @@ a{color:var(--brand)}
 .livebox{position:relative}.live{display:block;width:100%;cursor:crosshair;touch-action:manipulation}.tapdot{position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:var(--brand);opacity:.7;pointer-events:none}
 
 .liveframe { width: 100%; height: 82vh; border: 0; border-radius: 10px; background: #000; margin: 6px 0; }
+
+/* live captcha view: the browser fills the screen, a fixed bar keeps the controls (↓ ↑ Enviar) always visible */
+.livewrap { display: flex; flex-direction: column; height: calc(100vh - 90px); }
+.livewrap .liveframe { flex: 1; height: auto; margin: 0 0 8px; }
+.livebar { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; }
+.livebar .livebtn { flex: 0 0 auto; width: 48px; font-size: 20px; padding: 10px 0; }
+.livebar .livemsg { flex: 1; min-width: 0; margin: 0; }
+.livebar .livesend { flex: 0 0 auto; min-width: 110px; }
