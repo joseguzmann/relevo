@@ -76,16 +76,21 @@ def _label_list(raw: list) -> str:
     return "\n".join(out)
 
 
-def plan(raw: list, facts: str, cv_path: str, job: dict) -> list:
-    """Ask the LLM to map scanned fields to values from the candidate facts. Returns the raw plan items."""
+def plan(raw: list, facts: str, cv_path: str, job: dict, writing: str = "") -> list:
+    """Ask the LLM to map scanned fields to values from the candidate facts. Open questions are drafted in the
+    candidate's voice, following the writing rules, grounded in real work (never invented). Returns the plan items."""
     system = ("You map an application form's fields to a candidate's facts. For each field, give the exact text to "
-              "type, or for a select/radio/checkbox the option LABEL to choose, or 'Yes'/'Yes'/'No' for a yes-no. "
+              "type, or for a select/radio/checkbox the option LABEL to choose, or 'Yes'/'No' for a yes-no. "
               "A resume/CV upload: value '" + Path(cv_path).name + "', state 'ready'. "
-              "Open questions (motivation, 'tell us about…'): write a short honest answer from the facts, state 'confirm'. "
-              "If you cannot answer from the facts (education dropdown you do not know, a required doc, anything personal "
-              "not in the facts), state 'skip' so the person fills it. Never invent a fact.")
-    user = (f"CANDIDATE FACTS:\n{facts}\n\nJOB: {job.get('company','')} — {job.get('title','')}\n\n"
-            f"FIELDS (index, type, label, options):\n{_label_list(raw)}")
+              "OPEN QUESTIONS (motivation, 'tell us about…', 'your biggest accomplishment', 'what do you think of X'): "
+              "write a real answer, 2-4 honest sentences, in the candidate's VOICE following the writing rules, grounded "
+              "in a specific project or number from the facts. No empty adjectives, no invented facts, no recycled CV "
+              "sentences. Respect the question's length limit if it states one (e.g. 280 characters). State 'confirm' so "
+              "the person reviews it. If a field needs something not in the facts (an education dropdown, a required doc, "
+              "anything personal that is not given), state 'skip' so the person fills it in the live view. "
+              + ("\n\nWRITING RULES (the candidate's voice):\n" + writing if writing else ""))
+    user = (f"CANDIDATE FACTS:\n{facts}\n\nJOB: {job.get('company','')} — {job.get('title','')}\n"
+            f"{job.get('description','')[:1500]}\n\nFIELDS (index, type, label, options):\n{_label_list(raw)}")
     return llm.ask(system, user, PLAN_SCHEMA).get("fields", [])
 
 

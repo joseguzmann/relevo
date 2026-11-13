@@ -620,7 +620,7 @@ async def _reach_form(page, url: str):
 
 
 async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str,
-                            on_ready, minutes: int) -> Result:
+                            on_ready, minutes: int, writing: str = "") -> Result:
     """Fill ANY form in a headed browser: reach the form, scan fields, map them with the LLM (or a saved recipe for
     this host), fill, then the person solves the captcha and submits. Learns the host on success."""
     from patchright.async_api import async_playwright as live_playwright
@@ -643,7 +643,7 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
             return result
         raw = await general.read_fields(page)
         loop = asyncio.get_event_loop()
-        plan_items = await loop.run_in_executor(None, general.plan, raw, facts, cv_path, job)
+        plan_items = await loop.run_in_executor(None, general.plan, raw, facts, cv_path, job, writing)
         fill = await general.fill_fields(page, raw, plan_items, cv_path)
         result.verified = {lbl: True for lbl in fill["filled"]}
         result.unknown = fill["skipped"]
@@ -675,5 +675,5 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
 
 
 def fill_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str = "",
-                      on_ready=None, minutes: int = 30) -> Result:
-    return asyncio.run(_run_live_general(url, facts, cv_path, job, data, shot, after_shot, on_ready, minutes))
+                      on_ready=None, minutes: int = 30, writing: str = "") -> Result:
+    return asyncio.run(_run_live_general(url, facts, cv_path, job, data, shot, after_shot, on_ready, minutes, writing))

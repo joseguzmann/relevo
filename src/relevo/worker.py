@@ -195,6 +195,7 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
         kit = prepare.Kit(cfg.kit)
         family = kit.family(job)
         facts = kit.facts(family)
+        writing = kit.text("writing.md")
         codes = panel.get("codes") or {"pdf": track.new_code(), "form": track.new_code()}
         cv = track.stamp_cv(kit.cv(family), Path(cfg.data) / "cv" / str(job.get("id", item_id)), codes["pdf"])
         shot = str(Path(cfg.data) / f"shot-{item_id}.png")
@@ -205,7 +206,7 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
                       f"{company}: ábrela, completa lo que no supe, resuelve el captcha y envía", item_id)
 
         result = filler.fill_live_general(url, facts, cv, job, cfg.data, shot,
-                                          after_shot=str(after_shot(cfg, item_id)), on_ready=ready)
+                                          after_shot=str(after_shot(cfg, item_id)), on_ready=ready, writing=writing)
         if result.confirmation == "wall":
             store.finish(item_id, "manual", "es LinkedIn/login (Easy Apply): esta se postula a mano")
         elif result.confirmation == "no-form":

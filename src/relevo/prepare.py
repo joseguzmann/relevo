@@ -83,9 +83,13 @@ def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, s
     if way in forms.READERS:
         form = forms.fetch(way, target)
         fields = [{"id": f.id, "label": f.label, "kind": f.kind, "options": list(f.options)} for f in form.fields]
-        system = "You fill a job application form. One answer per field id; for options use the exact option text."
-        user = (f"Today is {date.today().isoformat()}.\n\n# Candidate\n{kit.facts(family)}\n\n"
-                f"# Job\n{job.get('description', '')}\n\n# Fields\n{fields}")
+        system = ("You fill a job application form. One answer per field id; for options use the exact option text. "
+                  "For open questions (motivation, 'tell us about…', 'your biggest accomplishment'), write a real answer "
+                  "of 2-4 honest sentences in the candidate's VOICE following the writing rules, grounded in a specific "
+                  "project or number from the facts — no empty adjectives, no invented facts, no recycled CV sentences; "
+                  "respect any stated length limit. Mark those 'confirm' so the person reviews them.")
+        user = (f"Today is {date.today().isoformat()}.\n\n# Writing rules (the candidate's voice)\n{kit.text('writing.md')}\n\n"
+                f"# Candidate\n{kit.facts(family)}\n\n# Job\n{job.get('description', '')}\n\n# Fields\n{fields}")
         drafted = llm.ask(system, user, llm.ANSWERS)["answers"]
         panel["form_url"] = form.url
         panel["fields"] = merge(form, drafted, cv)
