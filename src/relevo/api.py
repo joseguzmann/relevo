@@ -101,9 +101,12 @@ async def live_ws(ws: WebSocket):
     if not valid_session(ws.cookies.get("relevo", "")):
         await ws.close(code=1008)
         return
-    await ws.accept(subprotocol="binary")
+    # Transparent to subprotocols: echo back exactly what the client (noVNC) offered, and ask websockify for the same.
+    # noVNC may offer none; forcing one the client did not send makes the browser drop the socket ("something went wrong").
+    offered = [s.strip() for s in ws.headers.get("sec-websocket-protocol", "").split(",") if s.strip()]
+    await ws.accept(subprotocol=offered[0] if offered else None)
     try:
-        async with websockets.connect(f"ws://{LIVE_HOST}/websockify", subprotocols=["binary"],
+        async with websockets.connect(f"ws://{LIVE_HOST}/websockify", subprotocols=offered or None,
                                       max_size=None, open_timeout=15) as up:
             async def c2s():
                 try:
