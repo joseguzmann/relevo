@@ -39,4 +39,8 @@ a{color:var(--brand)}
   display: flex; flex-direction: column; background: #0d1117; box-sizing: border-box;
   padding: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
 .liveover .liveframe { flex: 1 1 auto; min-height: 0; height: auto; width: 100%; margin: 0 0 6px; }
-.liveover .livebar { flex: 0 0 auto; }
+.liveover .livebar { flex: 0 0 auto; flex-wrap: wrap; }
+/* Enviar is a .main button (width:100%): reset it here or it grows past the row and pushes ✕ off-screen.
+   It fills the slack between the arrows and ✕; the status msg hides when empty so Enviar stays wide. */
+.liveover .livebar .livesend { width: auto; flex: 1 1 auto; min-width: 120px; }
+.liveover .livebar .livemsg:empty { display: none; }
