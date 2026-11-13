@@ -5,7 +5,7 @@
 set -e
 export DISPLAY=:99
 rm -f /tmp/.X11-unix/X99 /tmp/.X99-lock 2>/dev/null || true
-Xvfb :99 -screen 0 900x1600x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+Xvfb :99 -screen 0 430x1500x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 sleep 2
 x11vnc -display :99 -forever -shared -nopw -quiet -bg >/tmp/x11vnc.log 2>&1 || true
 websockify --web=/usr/share/novnc 6083 localhost:5900 >/tmp/ws.log 2>&1 &
