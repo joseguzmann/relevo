@@ -506,7 +506,7 @@ def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: t
     return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot, 45, code_file, asked, captcha))
 
 
-async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_ready, minutes: int) -> Result:
+async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_ready, minutes: int, cmd_file: str = "") -> Result:
     """Fill a captcha form in a HEADED anti-detect browser on the real X display, then leave it open for the person to
     solve the captcha and click Submit over VNC. Reuses the same _open/_fill_field as the headless path, so the fill
     is the exact tested one. Nothing is submitted here: the person submits in the live view; this only watches for the
@@ -536,34 +536,19 @@ async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_re
         await _scroll_to_captcha(page)  # open the live view already at the captcha / submit, so no scrolling
         if on_ready:
             on_ready()  # the form is filled; the app now shows "open the live view to solve the captcha and submit"
-        for _ in range(minutes * 20):  # poll up to `minutes`, person-paced
-            await asyncio.sleep(3)
-            try:
-                text = await page.locator("body").inner_text()
-            except Exception:
-                break
-            if looks_sent(text):
-                result.submitted = result.confirmed = True
-                result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
-                try:
-                    from relevo import general as _g
-                    import os as _os
-                    _g.learn(_os.environ.get("RELEVO_DATA", "/data"), await _g.read_values(page))
-                except Exception:
-                    pass
-                try:
-                    await page.screenshot(path=after_shot, full_page=True)
-                except Exception:
-                    pass
-                break
+        async def _on_success(pg):
+            from relevo import general as _g
+            import os as _os
+            _g.learn(_os.environ.get("RELEVO_DATA", "/data"), await _g.read_values(pg))
+        await _live_wait(page, cmd_file, after_shot, minutes, result, on_success=_on_success)
         await ctx.close()
     return result
 
 
-def fill_live(form: Form, answers: dict, shot: str, after_shot: str = "", on_ready=None, minutes: int = 30) -> Result:
+def fill_live(form: Form, answers: dict, shot: str, after_shot: str = "", on_ready=None, minutes: int = 30, cmd_file: str = "") -> Result:
     if form.missing(answers) or form.invalid(answers):
         raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
-    return asyncio.run(_run_live(form, answers, shot, after_shot, on_ready, minutes))
+    return asyncio.run(_run_live(form, answers, shot, after_shot, on_ready, minutes, cmd_file))
 
 
 APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
@@ -577,6 +562,64 @@ SCROLL_TO_CAPTCHA_JS = r"""() => {
   window.scrollTo(0, document.body.scrollHeight);  // no captcha found: go to the bottom (submit is there)
   return false;
 }"""
+
+
+async def _click_submit(page) -> bool:
+    for sel in ('button:has-text("Submit Application")', 'button:has-text("Submit")', 'button:has-text("Enviar")',
+                'button:has-text("Postular")', 'button:has-text("Apply")', 'form button[type=submit]',
+                'button[type=submit]', 'input[type=submit]'):
+        try:
+            loc = page.locator(sel).last
+            await loc.scroll_into_view_if_needed(timeout=2000)
+            await loc.click(timeout=3000)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+async def _live_wait(page, cmd_file, after_shot, minutes, result, on_success=None):
+    """Hold the filled page open while the person solves the captcha. Reads commands the app writes to `cmd_file`
+    ('down'/'up' to scroll, 'submit' to send) so the person can drive it from the app, and marks the item sent the
+    moment Relevo clicks Submit (deterministic) or the page shows a success message."""
+    import os
+    clicked = False
+    for _ in range(minutes * 60):  # 1s steps so commands feel responsive
+        await asyncio.sleep(1)
+        try:
+            if cmd_file and os.path.exists(cmd_file):
+                cmd = Path(cmd_file).read_text().strip()
+                Path(cmd_file).unlink(missing_ok=True)
+                if cmd in ("down", "up"):
+                    try:
+                        await page.mouse.move(200, 700)
+                        await page.mouse.wheel(0, 700 if cmd == "down" else -700)
+                    except Exception:
+                        await page.evaluate(f"() => window.scrollBy(0, {700 if cmd == 'down' else -700})")
+                elif cmd == "submit":
+                    clicked = await _click_submit(page) or clicked
+        except Exception:
+            pass
+        try:
+            text = await page.locator("body").inner_text()
+        except Exception:
+            break
+        if looks_sent(text):
+            result.submitted = result.confirmed = True
+            result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
+            if on_success:
+                try:
+                    await on_success(page)
+                except Exception:
+                    pass
+            try:
+                await page.screenshot(path=after_shot, full_page=True)
+            except Exception:
+                pass
+            return
+    if clicked:  # we clicked Submit but never saw a confirmation
+        result.submitted = True
+        result.confirmation = "enviado desde la app; la página no mostró confirmación"
 
 
 async def _scroll_to_captcha(page):
@@ -644,7 +687,7 @@ async def _reach_form(page, url: str):
 
 
 async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str,
-                            on_ready, minutes: int, writing: str = "") -> Result:
+                            on_ready, minutes: int, writing: str = "", cmd_file: str = "") -> Result:
     """Fill ANY form in a headed browser: reach the form, scan fields, map them with the LLM (or a saved recipe for
     this host), fill, then the person solves the captcha and submits. Learns the host on success."""
     from patchright.async_api import async_playwright as live_playwright
@@ -679,30 +722,17 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
         await _scroll_to_captcha(page)
         if on_ready:
             on_ready()
-        for _ in range(minutes * 20):
-            await asyncio.sleep(3)
+        async def _on_success(pg):
             try:
-                text = await page.locator("body").inner_text()
+                general.learn(data, await general.read_values(pg))
             except Exception:
-                break
-            if looks_sent(text):
-                result.submitted = result.confirmed = True
-                result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
-                try:
-                    learned_n = general.learn(data, await general.read_values(page))
-                    print(f"[live] learned {learned_n} field value(s) from your corrections")
-                except Exception:
-                    pass
-                general.save_recipe(data, page.url, raw, plan_items, fill)
-                try:
-                    await page.screenshot(path=after_shot, full_page=True)
-                except Exception:
-                    pass
-                break
+                pass
+            general.save_recipe(data, pg.url, raw, plan_items, fill)
+        await _live_wait(page, cmd_file, after_shot, minutes, result, on_success=_on_success)
         await ctx.close()
     return result
 
 
 def fill_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str = "",
-                      on_ready=None, minutes: int = 30, writing: str = "") -> Result:
-    return asyncio.run(_run_live_general(url, facts, cv_path, job, data, shot, after_shot, on_ready, minutes, writing))
+                      on_ready=None, minutes: int = 30, writing: str = "", cmd_file: str = "") -> Result:
+    return asyncio.run(_run_live_general(url, facts, cv_path, job, data, shot, after_shot, on_ready, minutes, writing, cmd_file))

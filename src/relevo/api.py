@@ -241,6 +241,18 @@ def trylive(item_id: int):
     return {"status": "sending"}
 
 
+@app.post("/api/items/{item_id}/livecmd", dependencies=[Depends(session)])
+async def livecmd(item_id: int, request: Request):
+    """Drive the live browser from the app while solving the captcha: 'down'/'up' to scroll, 'submit' to send."""
+    if need(item_id)["status"] != "captcha":
+        raise HTTPException(409, "esta no está esperando el captcha")
+    cmd = str((await request.json()).get("cmd", ""))
+    if cmd not in ("down", "up", "submit"):
+        raise HTTPException(400, "comando inválido")
+    worker.live_cmd(cfg, item_id).write_text(cmd)
+    return {"ok": True}
+
+
 @app.get("/api/items/{item_id}/shot", dependencies=[Depends(session)])
 def shot(item_id: int):
     path = worker.after_shot(cfg, need(item_id)["id"])

@@ -109,6 +109,10 @@ def evidence(cfg: Config, item_id: int) -> Path:
     return Path(cfg.data) / f"sent-{item_id}.json"
 
 
+def live_cmd(cfg: Config, item_id: int) -> Path:
+    return Path(cfg.data) / f"live-cmd-{item_id}"
+
+
 def after_shot(cfg: Config, item_id: int) -> Path:
     return Path(cfg.data) / f"shot-{item_id}-after.png"
 
@@ -153,7 +157,8 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
 
             # `unknown` fields (ones the form asks that the panel did not have) are NOT a failure here: the person
             # fills them in the live view before submitting. Only a field that should have filled but did not fails.
-            result = filler.fill_live(form, answers, shot, after_shot=str(after_shot(cfg, item_id)), on_ready=live_ready)
+            result = filler.fill_live(form, answers, shot, after_shot=str(after_shot(cfg, item_id)), on_ready=live_ready,
+                                      cmd_file=str(live_cmd(cfg, item_id)))
             if result.failed:
                 store.finish(item_id, "failed", f"no se llenó: campos fallidos {result.failed}")
             elif result.confirmed:
@@ -206,7 +211,8 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
                       f"{company}: ábrela, completa lo que no supe, resuelve el captcha y envía", item_id)
 
         result = filler.fill_live_general(url, facts, cv, job, cfg.data, shot,
-                                          after_shot=str(after_shot(cfg, item_id)), on_ready=ready, writing=writing)
+                                          after_shot=str(after_shot(cfg, item_id)), on_ready=ready, writing=writing,
+                                          cmd_file=str(live_cmd(cfg, item_id)))
         if result.confirmation == "wall":
             store.finish(item_id, "manual", "es LinkedIn/login (Easy Apply): esta se postula a mano")
         elif result.confirmation == "no-form":
