@@ -42,7 +42,7 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 @app.middleware("http")
 async def no_cache(request: Request, call_next):
     response = await call_next(request)
-    response.headers["Cache-Control"] = "no-cache"
+    response.headers.setdefault("Cache-Control", "no-cache")  # a route may set its own (index: no-store)
     return response
 
 
