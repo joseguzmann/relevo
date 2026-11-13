@@ -401,7 +401,10 @@ def start():
 def index():
     # The CDN keeps .js and .css for hours whatever we send, so each version gets its own URL.
     version = hashlib.sha256((WEB / "app.js").read_bytes() + (WEB / "app.css").read_bytes()).hexdigest()[:10]
-    return HTMLResponse((WEB / "index.html").read_text().replace("?v=2", f"?v={version}"))
+    # The app shell must never be reused: it carries the asset hashes, so a stale copy pins the phone to an old
+    # version (several "the phone shows the old view" rounds came from this). no-store = always refetch the shell.
+    return HTMLResponse((WEB / "index.html").read_text().replace("?v=2", f"?v={version}"),
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/sw.js")
