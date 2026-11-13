@@ -522,6 +522,7 @@ async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_re
             await page.screenshot(path=shot, full_page=True)
         except Exception:
             pass
+        await _scroll_to_captcha(page)  # open the live view already at the captcha / submit, so no scrolling
         if on_ready:
             on_ready()  # the form is filled; the app now shows "open the live view to solve the captcha and submit"
         for _ in range(minutes * 20):  # poll up to `minutes`, person-paced
@@ -550,6 +551,23 @@ def fill_live(form: Form, answers: dict, shot: str, after_shot: str = "", on_rea
 
 APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
 LOGIN_WALL = re.compile(r"sign in to apply|iniciar sesión|to apply on the company|easy apply|solicitud sencilla", re.I)
+
+SCROLL_TO_CAPTCHA_JS = r"""() => {
+  const el = document.querySelector('iframe[src*="recaptcha"], iframe[title*="captcha" i], .g-recaptcha, [data-sitekey]')
+    || [...document.querySelectorAll('button, [type=submit], input[type=submit]')]
+         .find(b => /submit|enviar|apply|postul/i.test((b.innerText || b.value || '')));
+  if (el) { el.scrollIntoView({block: 'center', inline: 'center'}); return true; }
+  window.scrollTo(0, document.body.scrollHeight);  // no captcha found: go to the bottom (submit is there)
+  return false;
+}"""
+
+
+async def _scroll_to_captcha(page):
+    try:
+        await page.evaluate(SCROLL_TO_CAPTCHA_JS)
+        await page.wait_for_timeout(600)
+    except Exception:
+        pass
 
 
 FIND_APPLY_JS = r"""() => {
@@ -634,6 +652,7 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
             await page.screenshot(path=shot, full_page=True)
         except Exception:
             pass
+        await _scroll_to_captcha(page)
         if on_ready:
             on_ready()
         for _ in range(minutes * 20):
