@@ -76,9 +76,20 @@ def _label_list(raw: list) -> str:
     return "\n".join(out)
 
 
-def plan(raw: list, facts: str, cv_path: str, job: dict, writing: str = "") -> list:
-    """Ask the LLM to map scanned fields to values from the candidate facts. Open questions are drafted in the
-    candidate's voice, following the writing rules, grounded in real work (never invented). Returns the plan items."""
+def plan(raw: list, facts: str, cv_path: str, job: dict, writing: str = "", data: str = "/data") -> list:
+    """Map scanned fields to values. Fields the person has filled before (by label) come from the learned store first,
+    so they are not re-asked; the rest go to the LLM, drafting open questions in the candidate's voice (never invented)."""
+    learned = load_learned(data)
+    out, ask_fields, idx_map = [], [], {}
+    for i, f in enumerate(raw):
+        lv = from_learned(f.get("label", ""), learned)
+        if lv is not None:
+            out.append({"i": i, "value": lv, "state": "ready" if lv != "" else "skip", "source": "learned"})
+        else:
+            idx_map[len(ask_fields)] = i
+            ask_fields.append(f)
+    if not ask_fields:
+        return out
     system = ("You map an application form's fields to a candidate's facts. For each field, give the exact text to "
               "type, or for a select/radio/checkbox the option LABEL to choose, or 'Yes'/'No' for a yes-no. "
               "A resume/CV upload: value '" + Path(cv_path).name + "', state 'ready'. "
@@ -90,8 +101,12 @@ def plan(raw: list, facts: str, cv_path: str, job: dict, writing: str = "") -> l
               "anything personal that is not given), state 'skip' so the person fills it in the live view. "
               + ("\n\nWRITING RULES (the candidate's voice):\n" + writing if writing else ""))
     user = (f"CANDIDATE FACTS:\n{facts}\n\nJOB: {job.get('company','')} — {job.get('title','')}\n"
-            f"{job.get('description','')[:1500]}\n\nFIELDS (index, type, label, options):\n{_label_list(raw)}")
-    return llm.ask(system, user, PLAN_SCHEMA).get("fields", [])
+            f"{job.get('description','')[:1500]}\n\nFIELDS (index, type, label, options):\n{_label_list(ask_fields)}")
+    for it in llm.ask(system, user, PLAN_SCHEMA).get("fields", []):
+        if isinstance(it.get("i"), int) and it["i"] in idx_map:
+            it["i"] = idx_map[it["i"]]
+            out.append(it)
+    return out
 
 
 async def read_fields(page) -> list:
@@ -166,6 +181,83 @@ def recipe_path(data: str) -> Path:
 def load_recipes(data: str) -> dict:
     p = recipe_path(data)
     return json.loads(p.read_text()) if p.exists() else {}
+
+
+# ---- learning from the person's live-view corrections ----
+# When the person fixes or completes a field in the live view and submits, we remember the VALUE by its normalized
+# label, so the next form pre-fills it (your education, that a referral is empty, your pronoun, etc.). Long free-text
+# answers are not learned (too company-specific). Stored in data/learned.json: {normalized_label: {"value", "type"}}.
+
+READ_VALUES_JS = r"""() => {
+  const lab = (el) => {
+    let t = '';
+    if (el.id) { const l = document.querySelector('label[for="' + el.id.replace(/"/g,'\\"') + '"]'); if (l) t = l.innerText; }
+    if (!t) t = el.getAttribute('aria-label') || '';
+    if (!t) { const b = el.closest('[class*=field], [class*=question], [class*=form-group], label'); if (b) t = b.innerText; }
+    return (t || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  };
+  const out = [];
+  for (const el of document.querySelectorAll('input, textarea, select')) {
+    const tag = el.tagName.toLowerCase();
+    if (el.type === 'hidden' || el.type === 'file' || el.name === 'g-recaptcha-response') continue;
+    let v = null, type = el.type;
+    if (tag === 'select') { v = (el.options[el.selectedIndex] || {}).text || ''; type = 'select'; }
+    else if (el.type === 'checkbox' || el.type === 'radio') { if (!el.checked) continue; v = lab(el) || el.value; }
+    else { v = el.value; type = tag === 'textarea' ? 'textarea' : 'text'; }
+    if (v == null) continue;
+    out.push({label: lab(el), value: String(v), type});
+  }
+  return out;
+}"""
+
+
+def _norm(label: str) -> str:
+    return re.sub(r"[^a-z0-9 ]", "", (label or "").lower()).strip()
+
+
+def learned_path(data: str) -> Path:
+    return Path(data) / "learned.json"
+
+
+def load_learned(data: str) -> dict:
+    p = learned_path(data)
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+async def read_values(page) -> list:
+    try:
+        return await page.evaluate(READ_VALUES_JS)
+    except Exception:
+        return []
+
+
+def learn(data: str, final_values: list) -> int:
+    """Save the person's final values by normalized label, skipping long free-text (company-specific)."""
+    learned = load_learned(data)
+    n = 0
+    for v in final_values:
+        label, value, typ = v.get("label", ""), (v.get("value") or "").strip(), v.get("type")
+        if not label or typ == "textarea" or len(value) > 120:
+            continue  # long open answers are not reused
+        key = _norm(label)
+        if not key:
+            continue
+        if learned.get(key, {}).get("value") != value:
+            learned[key] = {"value": value, "type": typ}
+            n += 1
+    if n:
+        learned_path(data).write_text(json.dumps(learned, ensure_ascii=False, indent=1))
+    return n
+
+
+def from_learned(label: str, learned: dict):
+    """The learned value for a field label, or None. Also leaves referral/'how did you hear' empty on purpose."""
+    key = _norm(label)
+    if key in learned:
+        return learned[key]["value"]
+    if any(k in key for k in ("who referred", "referred you", "referral", "how did you hear")):
+        return ""  # nobody referred: leave empty
+    return None
 
 
 def save_recipe(data: str, url: str, raw: list, plan_items: list, result: dict) -> None:

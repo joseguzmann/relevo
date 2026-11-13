@@ -26,6 +26,7 @@ STANDARD = [  # (form key, page name, label, kind); country goes before province
     ("websiteUrl", "websiteUrl", "Website, Blog or Portfolio", "text"),
     ("linkedinUrl", "linkedinUrl", "LinkedIn URL", "text"),
     ("referredBy", "referredBy", "Who referred you", "text"),
+    ("educationLevelId", "educationLevelId.value", "Highest Education Obtained", "single_choice"),
 ]
 KINDS = {"short": "text", "long": "long_text", "yes_no": "single_choice", "multi": "single_choice"}
 
@@ -51,7 +52,7 @@ def parse_form(url: str, result: dict) -> Form:
         if key not in raw:
             continue
         options = ()
-        if key == "countryId":
+        if key in ("countryId", "educationLevelId"):
             options = tuple(o["text"] for o in raw[key].get("options") or [])
         fields.append(Field(name, label, kind, bool(raw[key].get("isRequired")), options))
     for q in raw.get("customQuestions") or []:

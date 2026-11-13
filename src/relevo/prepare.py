@@ -3,7 +3,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from relevo import filler, forms, llm, route, track
+from relevo import filler, forms, general, llm, route, track
 
 ALWAYS_ASK = re.compile(r"consent|agree|authori[sz]e|terms|privacy|gender|race|ethnic|disabilit|veteran|pronoun", re.I)
 ALWAYS_CONFIRM = re.compile(r"salary|compensation|expect|rate|sponsor|visa|work permit|authorized to work|"
@@ -93,8 +93,12 @@ def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, s
         drafted = llm.ask(system, user, llm.ANSWERS)["answers"]
         panel["form_url"] = form.url
         panel["fields"] = merge(form, drafted, cv)
+        learned = general.load_learned(data)  # the person's past corrections win (education, referral empty, pronoun…)
         for f in panel["fields"]:
-            if isinstance(f["value"], str) and f["kind"] != "file":
+            lv = general.from_learned(f["label"], learned)
+            if lv is not None and f["kind"] != "file":
+                f["value"] = lv
+            elif isinstance(f["value"], str) and f["kind"] != "file":
                 f["value"] = track.in_text(f["value"], panel["codes"]["form"])
         panel["unknown"] = filler.scan(form)
     else:

@@ -200,6 +200,17 @@ async def _fill_bamboohr(page, f, value) -> bool:
         await page.get_by_role("menuitem", name=value, exact=True).first.click()
         await page.wait_for_timeout(1500)  # the province and postal code fields change with the country
         return (await page.locator('button[aria-label^="Country"]').get_attribute("aria-label")).endswith(value)
+    if f.id == "educationLevelId.value":  # same fab menu as country; pick the exact option text
+        await page.locator('button[aria-label^="Highest Education"]').click()
+        await page.wait_for_timeout(400)
+        try:
+            await page.locator(".fab-MenuSearch__input").fill(value)
+            await page.wait_for_timeout(400)
+        except Exception:
+            pass
+        await page.get_by_role("menuitem", name=value, exact=True).first.click()
+        await page.wait_for_timeout(500)
+        return True
     group = page.locator(f'input[name="{f.id}"]')
     if f.kind == "yes_no":
         await group.first.set_checked(value == "Yes", force=True)
@@ -535,6 +546,12 @@ async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_re
                 result.submitted = result.confirmed = True
                 result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
                 try:
+                    from relevo import general as _g
+                    import os as _os
+                    _g.learn(_os.environ.get("RELEVO_DATA", "/data"), await _g.read_values(page))
+                except Exception:
+                    pass
+                try:
                     await page.screenshot(path=after_shot, full_page=True)
                 except Exception:
                     pass
@@ -643,7 +660,7 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
             return result
         raw = await general.read_fields(page)
         loop = asyncio.get_event_loop()
-        plan_items = await loop.run_in_executor(None, general.plan, raw, facts, cv_path, job, writing)
+        plan_items = await loop.run_in_executor(None, general.plan, raw, facts, cv_path, job, writing, data)
         fill = await general.fill_fields(page, raw, plan_items, cv_path)
         result.verified = {lbl: True for lbl in fill["filled"]}
         result.unknown = fill["skipped"]
@@ -664,6 +681,11 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
             if looks_sent(text):
                 result.submitted = result.confirmed = True
                 result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
+                try:
+                    learned_n = general.learn(data, await general.read_values(page))
+                    print(f"[live] learned {learned_n} field value(s) from your corrections")
+                except Exception:
+                    pass
                 general.save_recipe(data, page.url, raw, plan_items, fill)
                 try:
                     await page.screenshot(path=after_shot, full_page=True)
