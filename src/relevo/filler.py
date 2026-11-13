@@ -580,11 +580,18 @@ SCROLL_TO_CAPTCHA_JS = r"""() => {
 
 
 async def _scroll_to_captcha(page):
-    try:
-        await page.evaluate(SCROLL_TO_CAPTCHA_JS)
-        await page.wait_for_timeout(600)
-    except Exception:
-        pass
+    """Wait for the reCAPTCHA to render, then scroll it into view so the live view opens right at it. Retries,
+    because the captcha and the submit bar load after the fields."""
+    for _ in range(12):  # up to ~12s
+        try:
+            found = await page.evaluate(SCROLL_TO_CAPTCHA_JS)
+            if found:
+                await page.wait_for_timeout(500)
+                await page.evaluate(SCROLL_TO_CAPTCHA_JS)  # settle after lazy load
+                return
+        except Exception:
+            pass
+        await page.wait_for_timeout(1000)
 
 
 FIND_APPLY_JS = r"""() => {
