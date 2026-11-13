@@ -100,7 +100,9 @@ def prepare(job: dict, kit: Kit, data: str = "/data") -> tuple[str, str, dict, s
                 f["value"] = lv
             elif isinstance(f["value"], str) and f["kind"] != "file":
                 f["value"] = track.in_text(f["value"], panel["codes"]["form"])
-        panel["unknown"] = filler.scan(form)
+        labels = [f.label.lower() for f in form.fields]
+        panel["unknown"] = [u for u in filler.scan(form)
+                            if not any(lb and (lb in u.lower() or u.lower() in lb) for lb in labels)]
     else:
         system = "Write a short application email in the candidate's voice, following the writing rules exactly."
         user = (f"# Writing rules\n{kit.text('writing.md')}\n\n# Candidate\n{kit.facts(family)}\n\n"
