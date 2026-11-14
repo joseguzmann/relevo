@@ -235,7 +235,7 @@ def trylive(item_id: int):
     it = need(item_id)
     if it["route"] != "manual" and it["status"] not in ("manual", "failed"):
         raise HTTPException(400, "this one already has a form or email route")
-    if not store.claim(item_id):
+    if not store.claim(item_id, ("manual", "failed")):
         raise HTTPException(409, "already sent or being sent")
     threading.Thread(target=worker.try_live, args=(cfg, store, item_id), daemon=True).start()
     return {"status": "sending"}

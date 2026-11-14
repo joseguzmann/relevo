@@ -56,11 +56,12 @@ class Store:
                 (json.dumps(data, ensure_ascii=False), now(), item_id, *EDITABLE))
             return cur.rowcount == 1
 
-    def claim(self, item_id: int) -> bool:
+    def claim(self, item_id: int, statuses: tuple = ("ready",)) -> bool:
         """Only one send can win: this is what makes two taps send one application."""
+        marks = ",".join("?" * len(statuses))
         with self.lock:
-            cur = self.db.execute("update items set status='sending', updated_at=? where id=? and status='ready'",
-                                  (now(), item_id))
+            cur = self.db.execute(f"update items set status='sending', updated_at=? where id=? and status in ({marks})",
+                                  (now(), item_id, *statuses))
             return cur.rowcount == 1
 
     def finish(self, item_id: int, status: str, reason: str = "") -> None:
