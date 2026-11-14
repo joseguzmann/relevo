@@ -697,19 +697,30 @@ COOKIE_NO = re.compile(r"^(decline all|reject all|decline|reject|only necessary|
 COOKIE_YES = re.compile(r"^(accept all|accept|allow all|i agree|got it|ok|aceptar( todo)?|entendido)$", re.I)
 
 
-async def _dismiss_cookies(page) -> None:
+DISMISS_COOKIES_JS = r"""(patterns) => {
+  // Click, inside the page, the first visible banner button whose text matches (decline first). Patchright's element
+  // handles fail silently here, so this runs as plain DOM code.
+  const btns = [...document.querySelectorAll('button, a[role=button], [role=button], input[type=button]')]
+    .filter(b => b.offsetParent !== null && (b.innerText || b.value || '').trim().length < 40);
+  for (const src of patterns) {
+    const rx = new RegExp(src, 'i');
+    const b = btns.find(b => rx.test((b.innerText || b.value || '').trim()));
+    if (b) { b.click(); return (b.innerText || b.value || '').trim(); }
+  }
+  return '';
+}"""
+
+
+async def _dismiss_cookies(page) -> str:
     """Cookie banners sit on top of 'Apply' and block the click (Workable). Prefer declining; accept only if that is
-    the only way to close it."""
-    for rx in (COOKIE_NO, COOKIE_YES):
-        for el in await page.query_selector_all("button, a[role=button], [role=button]"):
-            try:
-                txt = ((await el.inner_text()) or "").strip()
-                if txt and rx.match(txt) and await el.is_visible():
-                    await el.click(timeout=2000)
-                    await page.wait_for_timeout(500)
-                    return
-            except Exception:
-                continue
+    the only way to close it. Returns the button clicked, or ''."""
+    try:
+        hit = await page.evaluate(DISMISS_COOKIES_JS, [COOKIE_NO.pattern, COOKIE_YES.pattern])
+        if hit:
+            await page.wait_for_timeout(600)
+        return hit or ""
+    except Exception:
+        return ""
 
 
 async def _reach_form(page, url: str):
@@ -733,8 +744,11 @@ async def _reach_form(page, url: str):
     if apply_sel:
         try:
             await page.locator(apply_sel).first.click(timeout=5000)
-        except Exception:
-            pass
+        except Exception:  # an overlay or patchright quirk: click it from inside the page
+            try:
+                await page.evaluate("(s) => { const e = document.querySelector(s); if (e) e.click(); }", apply_sel)
+            except Exception:
+                pass
         await page.wait_for_timeout(3000)
         extra = [pg for pg in ctx.pages if pg not in before]
         if not extra and await nfields(page) < 3:  # same-page apps (Workable) render the form a bit later
