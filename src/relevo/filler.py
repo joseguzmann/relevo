@@ -579,6 +579,8 @@ async def _dry_run(ctx, result: Result) -> None:
 
 
 APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
+CLOSED = re.compile(r"proceso ya termin|ya no (est[aá] )?(disponible|recibe)|no longer accepting|no longer available|"
+                    r"position has been filled|this job (is|has been) closed|job (posting )?(has )?expired|vacante (cerrada|finalizada)", re.I)
 LOGIN_URL = re.compile(r"accounts\.google\.com|/(log-?in|sign-?in|sign-?up|register|signup|my-profile|account/login|auth)(\b|/|\?|$)", re.I)
 ACCOUNT_WALL = re.compile(r"continue with google|sign up to apply|create (an )?account|sign in to apply|log in to apply", re.I)
 LOGIN_WALL = re.compile(r"sign in to apply|iniciar sesión|to apply on the company|easy apply|solicitud sencilla", re.I)
@@ -684,7 +686,7 @@ async def _scroll_to_captcha(page):
 
 
 FIND_APPLY_JS = r"""() => {
-  const re = /\b(apply|postul|aplicar|solicitar)\b/i;
+  const re = /\b(apply|postul\w*|aplicar|solicitar)\b|i'?m interested|me interesa|quiero postular/i;
   const els = [...document.querySelectorAll('a, button, [role=button]')];
   const m = els.find(e => re.test((e.innerText || e.getAttribute('aria-label') || '').trim()) &&
                           !/sign in|log in|iniciar/i.test(e.innerText || ''));
@@ -740,6 +742,8 @@ async def _reach_form(page, url: str):
     ctx = page.context
     if await nfields(page) >= 3:
         return "form", page
+    if CLOSED.search(((await page.locator("body").inner_text()) or "")[:4000]):
+        return "closed", page
     before = list(ctx.pages)
     apply_sel = await page.evaluate(FIND_APPLY_JS)
     if apply_sel:
@@ -766,6 +770,8 @@ async def _reach_form(page, url: str):
             await page.wait_for_timeout(1500)
     body = ((await page.locator("body").inner_text()) or "")[:4000]
     n = await nfields(page)
+    if n < 3 and CLOSED.search(body):
+        return "closed", page
     if "linkedin.com" in (page.url or "") and n < 3 and LOGIN_WALL.search(body):
         return "wall", page
     if n < 3 and ACCOUNT_WALL.search(body):  # any site whose apply starts with an account (micro1, Workday…)
@@ -794,6 +800,10 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
         status, page = await _reach_form(page, url)
         if status == "wall":
             result.confirmation = "wall"
+            await ctx.close()
+            return result
+        if status == "closed":
+            result.confirmation = "closed"
             await ctx.close()
             return result
         if status == "none":
