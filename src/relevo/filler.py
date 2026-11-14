@@ -579,6 +579,7 @@ async def _dry_run(ctx, result: Result) -> None:
 
 
 APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
+LOGIN_URL = re.compile(r"accounts\.google\.com|/(log-?in|sign-?in|sign-?up|register|signup|my-profile|account/login|auth)(\b|/|\?|$)", re.I)
 ACCOUNT_WALL = re.compile(r"continue with google|sign up to apply|create (an )?account|sign in to apply|log in to apply", re.I)
 LOGIN_WALL = re.compile(r"sign in to apply|iniciar sesión|to apply on the company|easy apply|solicitud sencilla", re.I)
 
@@ -768,6 +769,11 @@ async def _reach_form(page, url: str):
     if "linkedin.com" in (page.url or "") and n < 3 and LOGIN_WALL.search(body):
         return "wall", page
     if n < 3 and ACCOUNT_WALL.search(body):  # any site whose apply starts with an account (micro1, Workday…)
+        return "wall", page
+    # A login or account page is never a form to fill: Google Forms that need sign-in landed on accounts.google.com and
+    # the filler typed the email into it (13-nov test). URL or a password box is enough to stop.
+    has_password = await page.evaluate("() => !!document.querySelector('input[type=password]')")
+    if LOGIN_URL.search(page.url or "") or has_password:
         return "wall", page
     return ("form", page) if n >= 3 else ("none", page)
 
