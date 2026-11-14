@@ -160,8 +160,16 @@ async def _fill_one(page, f: dict, value, cv_path: str) -> bool:
                 hit = True
         return hit
     box = page.locator(f["selector"]).first
-    await box.fill(str(value))
-    return (await box.input_value()) == str(value)
+    text = str(value)
+    if t == "number":  # e.g. a phone typed into <input type=number>: digits only
+        text = re.sub(r"\D", "", text)
+    await box.fill(text)
+    got = await box.input_value()
+    if got != text:  # controlled inputs (React) may drop .fill(): type it like a person
+        await box.fill("")
+        await box.press_sequentially(text, delay=15)
+        got = await box.input_value()
+    return got == text
 
 
 # ---- phase 3: recipes (learning) ----

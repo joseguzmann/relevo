@@ -1,6 +1,7 @@
 """Fills a form from its fields and approved answers, checks each one, and submits only if told to."""
 import asyncio
 import os
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -755,6 +756,11 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
         loop = asyncio.get_event_loop()
         plan_items = await loop.run_in_executor(None, general.plan, raw, facts, cv_path, job, writing, data)
         fill = await general.fill_fields(page, raw, plan_items, cv_path)
+        try:  # what was read, what the model decided and what filled: the record to debug a new form
+            Path(data, f"general-debug-{job.get('id', 'x')}.json").write_text(json.dumps(
+                {"url": page.url, "raw": raw, "plan": plan_items, "fill": fill}, ensure_ascii=False, indent=1))
+        except Exception:
+            pass
         result.verified = {lbl: True for lbl in fill["filled"]}
         result.unknown = fill["skipped"]
         result.confirmation = f"llené {len(fill['filled'])}/{len(raw)}; revisa: {', '.join(fill['skipped'][:6])}"
