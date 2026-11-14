@@ -48,6 +48,13 @@ SCAN_JS = r"""() => {
     if (!group && el.id) { const l = document.querySelector('label[for="' + el.id.replace(/"/g,'\\"') + '"]'); if (l) t = l.innerText; }
     if (!t && !group) t = el.getAttribute('aria-label') || '';
     if (!t) t = ownText(el, group);
+    if (!t && !group) {  // Loxo-style options: "<input> A1: Beginner <br>", loose text right after the input
+      let n = el.nextSibling, acc = '';
+      while (n && !(n.nodeType === 1 && (n.matches('input, select, textarea, br') || n.querySelector('input, select, textarea')))) {
+        acc += ' ' + (n.textContent || ''); n = n.nextSibling;
+      }
+      t = acc.trim();
+    }
     if (!t) t = el.placeholder || el.name || '';
     return t.replace(/\s+/g, ' ').trim().slice(0, 300);
   };
