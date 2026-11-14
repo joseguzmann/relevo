@@ -163,8 +163,8 @@ async function detail(id) {
     const down = el('button', {className: 'livebtn', textContent: '↓', onclick: () => cmd('down')});
     const msg = el('div', {className: 'soft livemsg'});
     const sendb = el('button', {className: 'main livesend', textContent: 'Enviar', onclick: async () => {
-      working(sendb, 'Enviando…'); msg.textContent = 'Relevo está enviando…';
-      await cmd('submit'); poll(id, msg);
+      working(sendb, 'Enviando…'); msg.textContent = 'Enviando. Se cierra solo cuando termine.';
+      await cmd('submit');  // the overlay's own watcher below closes it when the status leaves 'captcha'
     }});
     const close = el('button', {className: 'livebtn', textContent: '✕', title: 'Volver', onclick: () => detail(id)});
     const overlay = el('div', {className: 'liveover'}, frame,
@@ -173,7 +173,11 @@ async function detail(id) {
     const stop = setInterval(async () => {
       if (location.hash.slice(1) !== String(id)) { overlay.remove(); clearInterval(stop); return; }
       const it = await api('/items/' + id).catch(() => null);
-      if (it && it.status !== 'captcha') { overlay.remove(); clearInterval(stop); detail(id); }
+      if (it && it.status !== 'captcha') {
+        clearInterval(stop);
+        document.querySelectorAll('.liveover').forEach(o => o.remove());  // never leave a stale overlay on top
+        detail(id);
+      }
     }, 2500);
     return;  // the overlay IS the view; skip the normal detail layout
     (async () => {

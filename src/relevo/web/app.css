@@ -44,3 +44,4 @@ a{color:var(--brand)}
    It fills the slack between the arrows and ✕; the status msg hides when empty so Enviar stays wide. */
 .liveover .livebar .livesend { width: auto; flex: 1 1 auto; min-width: 120px; }
 .liveover .livebar .livemsg:empty { display: none; }
+.liveover .livebar .livemsg { order: -1; flex: 1 0 100%; text-align: center; }  /* its own line above the buttons */
