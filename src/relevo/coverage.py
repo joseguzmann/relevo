@@ -5,7 +5,8 @@ Single source of truth for the two questions Jose asked (2026-11-12):
   2. which site is the next most relevant to add.
 
 `send`:    auto  = Relevo fills and submits by itself (no captcha)
-           hand  = a captcha the person solves (today: fill in Safari; being moved to the Gateway browser)
+           hand  = a captcha the person solves: Relevo fills the Gateway browser, the person solves it in the live
+                   view on the phone and taps Enviar (since 2026-11-12)
            none  = no reader yet
 `proven`:  a real application went through this ATS (job number in `note`)
 `volume`:  jobs seen in the last 30 days at match >= 7 (Vigia ATS counts, card of 2026-11-06; refresh with
@@ -32,12 +33,12 @@ EXITS = [
     Exit("ashby",         "Ashby",          "auto", "",             False, 165, "reader built; no live send confirmed yet"),
     Exit("manatal",       "Manatal",        "auto", "",             True,  114, "proven #117 iDelsoft (API said success)"),
     Exit("greenhouse",    "Greenhouse",     "auto", "code-by-email", True,  73, "proven #116 Arionkoder: 428 then 8-char code by email, typed in the app"),
-    Exit("bamboohr",      "BambooHR",       "hand", "recaptcha",    False,  46, "reader built; captcha by hand (Safari shortcut flaky -> move to Gateway browser)"),
+    Exit("bamboohr",      "BambooHR",       "hand", "recaptcha",    True,   46, "proven live view: #149 Koltin (12-nov), #148 Newsmatics (13-nov, 'submitted successfully')"),
     Exit("workday",       "Workday",        "none", "",             False,  36, "needs an account; no reader"),
     Exit("breezy",        "Breezy",         "auto", "",             True,    7, "proven #119 Urrly (POST 204, 'submitted successfully')"),
-    Exit("workable",      "Workable",       "none", "turnstile",    False,   7, "captcha on submit; never built"),
-    Exit("recruitee",     "Recruitee",      "none", "hcaptcha",     False,   7, "captcha on submit; never built"),
-    Exit("lever",         "Lever",          "none", "hcaptcha",     False,   6, "invisible hCaptcha on submit; never built"),
+    Exit("workable",      "Workable",       "none", "turnstile",    False,   7, "no reader; general live filler untried here"),
+    Exit("recruitee",     "Recruitee",      "none", "hcaptcha",     False,   7, "no reader; general live filler untried here"),
+    Exit("lever",         "Lever",          "none", "hcaptcha",     False,   6, "no reader; general live filler filled 9/12 (12-nov), never sent"),
     Exit("smartrecruiters","SmartRecruiters","none", "",            False,   3, "too few to build for now"),
     Exit("teamtailor",    "Teamtailor",     "none", "",             False,   2, "too few to build for now"),
 ]
