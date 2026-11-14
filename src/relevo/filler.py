@@ -687,11 +687,16 @@ async def _scroll_to_captcha(page):
 
 FIND_APPLY_JS = r"""() => {
   const re = /\b(apply|postul\w*|aplicar|solicitar)\b|i'?m interested|me interesa|quiero postular/i;
-  const els = [...document.querySelectorAll('a, button, [role=button]')];
+  // Visible, not clicked before (a second hop must pick the NEXT apply: Jobicy's first one only scrolls to a section
+  // that holds the real link), and not a sign-in link.
+  const els = [...document.querySelectorAll('a, button, [role=button]')]
+    .filter(e => e.offsetParent !== null && !e.hasAttribute('data-relevo-clicked'));
   const m = els.find(e => re.test((e.innerText || e.getAttribute('aria-label') || '').trim()) &&
                           !/sign in|log in|iniciar/i.test(e.innerText || ''));
   if (!m) return null;
+  document.querySelectorAll('[data-relevo-apply]').forEach(e => e.removeAttribute('data-relevo-apply'));
   m.setAttribute('data-relevo-apply', '1');
+  m.setAttribute('data-relevo-clicked', '1');
   return '[data-relevo-apply="1"]';
 }"""
 
@@ -763,8 +768,19 @@ async def _reach_form(page, url: str):
         return "form", page
     if CLOSED.search(((await page.locator("body").inner_text()) or "")[:4000]):
         return "closed", page
+    for hop in range(2):  # an Apply can lead to another Apply (anchor to a section, or a modal)
+        page, done = await _click_apply(page, ctx, nfields)
+        if done or await nfields(page) >= 3 or await _is_login(page):
+            break
+    return await _classify(page, nfields)
+
+
+async def _click_apply(page, ctx, nfields):
+    """Click the next Apply on the page; follow a new tab if one opens. Returns (page, nothing_to_click)."""
     before = list(ctx.pages)
     apply_sel = await page.evaluate(FIND_APPLY_JS)
+    if not apply_sel:
+        return page, True
     if apply_sel:
         try:
             await page.locator(apply_sel).first.click(timeout=5000)
@@ -787,6 +803,10 @@ async def _reach_form(page, url: str):
             except Exception:
                 pass
             await page.wait_for_timeout(1500)
+    return page, False
+
+
+async def _classify(page, nfields):
     body = ((await page.locator("body").inner_text()) or "")[:4000]
     n = await nfields(page)
     if await _is_login(page):
