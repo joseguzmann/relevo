@@ -1,6 +1,7 @@
 """Which way out a job has. LinkedIn is never a way out: an email written in a post is, and so is an ATS form that a
 post links to. Post links come shortened (lnkd.in); they are resolved without cookies or an account, reading only the
 destination from LinkedIn's "you are leaving LinkedIn" page (Jose, 2026-11-13). No LinkedIn page is ever opened."""
+import html
 import json
 import os
 import re
@@ -51,11 +52,12 @@ def unshorten(url: str, cache_file: str = "") -> str:
         except ValueError:
             cache = {}
     if url in cache:
-        return cache[url]
+        return html.unescape(cache[url])
     status, location, body = _get(url, follow=False)
     dest = location if location and not NOT_DEST.match(location) else ""
     if not dest:
         dest = next((h for h in HREF.findall(body) if not NOT_DEST.match(h)), "")
+    dest = html.unescape(dest)  # hrefs come HTML-escaped (&amp;)
     if cache_file:
         cache[url] = dest
         try:

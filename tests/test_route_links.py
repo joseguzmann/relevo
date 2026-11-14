@@ -40,3 +40,7 @@ class LinkTests(unittest.TestCase):
         with mock.patch.object(route, "_get", side_effect=lambda u, follow=True: calls[u]):
             job = {"url": "https://www.linkedin.com/posts/x_hiring-1", "description": "Apply https://lnkd.in/f1"}
             self.assertEqual(route.decide(job), ("manual", "https://forms.fillout.com/t/abc"))
+
+    def test_destination_is_unescaped(self):
+        with mock.patch.object(route, "_get", return_value=(200, "", '<a href="https://a.io/j?x=1&amp;y=2">x</a>')):
+            self.assertEqual(route.unshorten("https://lnkd.in/zz"), "https://a.io/j?x=1&y=2")
