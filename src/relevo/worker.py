@@ -127,9 +127,13 @@ def is_test(item: dict) -> bool:
         or str(job.get("title", "")).upper().startswith("PRUEBA") or str(job.get("company", "")).upper().startswith("PRUEBA")
 
 
-def _finish_test(store: Store, item_id: int, result) -> None:
-    stopped = "; ".join(f"{b['method']} {b['url'][:80]}" for b in result.blocked[:3])
-    store.finish(item_id, "failed", (result.confirmation or "PRUEBA: no se envió") + (f". Detenidos: {stopped}" if stopped else ""))
+def _finish_test(cfg: Config, store: Store, item_id: int, result) -> None:
+    """Keep every blocked request (evidence file) and show the submit-like ones first, not the analytics beacons."""
+    evidence(cfg, item_id).write_text(json.dumps({"dry_run": True, "blocked": result.blocked}, ensure_ascii=False, indent=1))
+    noise = ("pendo", "ptm.gif", "analytics", "collect", "beacon", "sentry", "datadog", "hotjar")
+    real = [b for b in result.blocked if not any(n in b["url"].lower() for n in noise)]
+    shown = "; ".join(f"{b['method']} {b['url'][:90]}" for b in real[:3]) or "solo analítica (ningún POST del formulario)"
+    store.finish(item_id, "failed", f"{result.confirmation or 'PRUEBA: no se envió'}. Del formulario: {shown}")
 
 
 def resolve(cfg: Config, store: Store, item: dict, sent: bool) -> None:
@@ -179,7 +183,7 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             result = filler.fill_live(form, answers, shot, after_shot=str(after_shot(cfg, item_id)), on_ready=live_ready,
                                       cmd_file=str(live_cmd(cfg, item_id)), dry=test)
             if test:
-                _finish_test(store, item_id, result)
+                _finish_test(cfg, store, item_id, result)
             elif result.failed:
                 store.finish(item_id, "failed", f"no se llenó: campos fallidos {result.failed}")
             elif result.confirmed:
@@ -237,7 +241,7 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
                                           after_shot=str(after_shot(cfg, item_id)), on_ready=ready, writing=writing,
                                           cmd_file=str(live_cmd(cfg, item_id)), dry=is_test(item))
         if is_test(item) and result.confirmation not in ("wall", "no-form"):
-            _finish_test(store, item_id, result)
+            _finish_test(cfg, store, item_id, result)
         elif result.confirmation == "wall":
             store.finish(item_id, "manual", "es LinkedIn/login (Easy Apply): esta se postula a mano")
         elif result.confirmation == "no-form":
