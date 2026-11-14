@@ -117,6 +117,21 @@ def after_shot(cfg: Config, item_id: int) -> Path:
     return Path(cfg.data) / f"shot-{item_id}-after.png"
 
 
+TEST_JOB_IDS = 999000  # seeded test items live at job ids >= this
+
+
+def is_test(item: dict) -> bool:
+    """A test item never applies: dry run in the live browser, no submit on headless ATSs, never marked sent."""
+    job = (item.get("data") or {}).get("job", {})
+    return bool((item.get("data") or {}).get("test")) or int(item.get("job_id") or job.get("id") or 0) >= TEST_JOB_IDS \
+        or str(job.get("title", "")).upper().startswith("PRUEBA") or str(job.get("company", "")).upper().startswith("PRUEBA")
+
+
+def _finish_test(store: Store, item_id: int, result) -> None:
+    stopped = "; ".join(f"{b['method']} {b['url'][:80]}" for b in result.blocked[:3])
+    store.finish(item_id, "failed", (result.confirmation or "PRUEBA: no se envió") + (f". Detenidos: {stopped}" if stopped else ""))
+
+
 def resolve(cfg: Config, store: Store, item: dict, sent: bool) -> None:
     """The person checked an `unclear` send. Only their word moves it, in either direction."""
     if sent:
@@ -130,8 +145,12 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
     """Runs after claim(). Any doubt ends in `unclear`, which is never retried by code."""
     item = store.get(item_id)
     panel = item["data"]
+    test = is_test(item)
     try:
         if item["route"] == "email":
+            if test:
+                store.finish(item_id, "failed", "PRUEBA: el correo no se envía")
+                return
             mail = panel["email"]
             msg = mailer.build(cfg.sender, mail["to"], mail["subject"], mail["body"], mail["cv"])
             sent_id = mailer.send(cfg.token, msg)
@@ -158,8 +177,10 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             # `unknown` fields (ones the form asks that the panel did not have) are NOT a failure here: the person
             # fills them in the live view before submitting. Only a field that should have filled but did not fails.
             result = filler.fill_live(form, answers, shot, after_shot=str(after_shot(cfg, item_id)), on_ready=live_ready,
-                                      cmd_file=str(live_cmd(cfg, item_id)))
-            if result.failed:
+                                      cmd_file=str(live_cmd(cfg, item_id)), dry=test)
+            if test:
+                _finish_test(store, item_id, result)
+            elif result.failed:
                 store.finish(item_id, "failed", f"no se llenó: campos fallidos {result.failed}")
             elif result.confirmed:
                 outbox(cfg, item, form_material(panel, item["route"]))
@@ -173,10 +194,12 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             push.send(store, push.keys(cfg.data)[0], cfg.site, "Falta el código",
                       f"{company}: escribe el código que llegó al correo", item_id)
 
-        result = filler.fill(form, answers, shot, submit=True, accepted=panel.get("accepted_unknown", []),
+        result = filler.fill(form, answers, shot, submit=not test, accepted=panel.get("accepted_unknown", []),
                              after_shot=str(after_shot(cfg, item_id)), code_file=str(code_file(cfg, item_id)), asked=asked)
         evidence(cfg, item_id).write_text(json.dumps(result.requests, ensure_ascii=False, indent=1))
-        if result.failed or (result.unknown and not result.submitted):
+        if test:
+            store.finish(item_id, "failed", f"PRUEBA: llenado sin enviar; fallidos {result.failed}, desconocidos {result.unknown}")
+        elif result.failed or (result.unknown and not result.submitted):
             store.finish(item_id, "failed", f"not sent: failed {result.failed}, unknown {result.unknown}")
         elif result.confirmed:
             outbox(cfg, item, form_material(panel, item["route"]))
@@ -212,8 +235,10 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
 
         result = filler.fill_live_general(url, facts, cv, job, cfg.data, shot,
                                           after_shot=str(after_shot(cfg, item_id)), on_ready=ready, writing=writing,
-                                          cmd_file=str(live_cmd(cfg, item_id)))
-        if result.confirmation == "wall":
+                                          cmd_file=str(live_cmd(cfg, item_id)), dry=is_test(item))
+        if is_test(item) and result.confirmation not in ("wall", "no-form"):
+            _finish_test(store, item_id, result)
+        elif result.confirmation == "wall":
             store.finish(item_id, "manual", "es LinkedIn/login (Easy Apply): esta se postula a mano")
         elif result.confirmation == "no-form":
             store.finish(item_id, "manual", "no encontré un formulario que llenar en ese link: a mano")

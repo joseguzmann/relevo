@@ -60,6 +60,7 @@ class Result:
     server: str = ""  # what the ATS answered to the submit request
     requests: list = field(default_factory=list)  # every request the click sent: method, url, body, answer
     unknown: list = field(default_factory=list)  # on the page but not in the form data: a person must see these
+    blocked: list = field(default_factory=list)  # dry run (test item): write requests aborted instead of sent
 
     @property
     def failed(self) -> list[str]:
@@ -506,7 +507,8 @@ def fill(form: Form, answers: dict, shot: str, submit: bool = False, accepted: t
     return asyncio.run(run(form, answers, shot, submit, tuple(accepted), after_shot, 45, code_file, asked, captcha))
 
 
-async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_ready, minutes: int, cmd_file: str = "") -> Result:
+async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_ready, minutes: int, cmd_file: str = "",
+                    dry: bool = False) -> Result:
     """Fill a captcha form in a HEADED anti-detect browser on the real X display, then leave it open for the person to
     solve the captcha and click Submit over VNC. Reuses the same _open/_fill_field as the headless path, so the fill
     is the exact tested one. Nothing is submitted here: the person submits in the live view; this only watches for the
@@ -517,7 +519,7 @@ async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_re
     async with live_playwright() as p:
         ctx = await p.chromium.launch_persistent_context(
             user_data_dir=f"/tmp/live-{os.getpid()}", headless=False, no_viewport=True,
-            args=["--no-sandbox", "--start-maximized"])
+            service_workers="block" if dry else "allow", args=["--no-sandbox", "--start-maximized"])
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         await _open(page, form)
         for f in form.fields:
@@ -534,21 +536,45 @@ async def _run_live(form: Form, answers: dict, shot: str, after_shot: str, on_re
         except Exception:
             pass
         await _scroll_to_captcha(page)  # open the live view already at the captcha / submit, so no scrolling
+        if dry:
+            await _dry_run(ctx, result)
         if on_ready:
             on_ready()  # the form is filled; the app now shows "open the live view to solve the captcha and submit"
         async def _on_success(pg):
             from relevo import general as _g
             import os as _os
             _g.learn(_os.environ.get("RELEVO_DATA", "/data"), await _g.read_values(pg))
-        await _live_wait(page, cmd_file, after_shot, minutes, result, on_success=_on_success)
+        await _live_wait(page, cmd_file, after_shot, minutes, result, on_success=None if dry else _on_success, dry=dry)
         await ctx.close()
     return result
 
 
-def fill_live(form: Form, answers: dict, shot: str, after_shot: str = "", on_ready=None, minutes: int = 30, cmd_file: str = "") -> Result:
+def fill_live(form: Form, answers: dict, shot: str, after_shot: str = "", on_ready=None, minutes: int = 30, cmd_file: str = "",
+              dry: bool = False) -> Result:
     if form.missing(answers) or form.invalid(answers):
         raise ValueError(f"missing {form.missing(answers)}; invalid {form.invalid(answers)}")
-    return asyncio.run(_run_live(form, answers, shot, after_shot, on_ready, minutes, cmd_file))
+    return asyncio.run(_run_live(form, answers, shot, after_shot, on_ready, minutes, cmd_file, dry))
+
+
+CAPTCHA_HOSTS = re.compile(r"(^|\.)(google\.com|gstatic\.com|recaptcha\.net|hcaptcha\.com|challenges\.cloudflare\.com)$", re.I)
+SUBMITTISH = re.compile(r"apply|application|submit|candidat|job", re.I)
+
+
+async def _dry_run(ctx, result: Result) -> None:
+    """Test items: from here on nothing leaves the browser except captcha traffic. Every write request
+    (POST/PUT/PATCH/DELETE) to any other host is aborted and kept in result.blocked, so a test can go all the way to
+    Enviar without applying. (2026-11-12: the PRUEBA Koltin item went out for real because nothing stopped it.)"""
+    from urllib.parse import urlparse
+
+    async def guard(route, request):
+        host = urlparse(request.url).hostname or ""
+        if request.method != "GET" and not CAPTCHA_HOSTS.search(host):
+            result.blocked.append({"method": request.method, "url": request.url[:300]})
+            await route.abort()
+        else:
+            await route.continue_()
+
+    await ctx.route("**/*", guard)
 
 
 APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
@@ -578,7 +604,7 @@ async def _click_submit(page) -> bool:
     return False
 
 
-async def _live_wait(page, cmd_file, after_shot, minutes, result, on_success=None):
+async def _live_wait(page, cmd_file, after_shot, minutes, result, on_success=None, dry: bool = False):
     """Hold the filled page open while the person solves the captcha. Reads commands the app writes to `cmd_file`
     ('down'/'up' to scroll, 'submit' to send) so the person can drive it from the app, and marks the item sent the
     moment Relevo clicks Submit (deterministic) or the page shows a success message."""
@@ -586,6 +612,15 @@ async def _live_wait(page, cmd_file, after_shot, minutes, result, on_success=Non
     clicked = False
     for _ in range(minutes * 60):  # 1s steps so commands feel responsive
         await asyncio.sleep(1)
+        if dry and (clicked or any(SUBMITTISH.search(b["url"]) for b in result.blocked)):
+            await asyncio.sleep(4)  # let the aborted submit settle, then show what was stopped
+            try:
+                await page.screenshot(path=after_shot, full_page=True)
+            except Exception:
+                pass
+            result.submitted = result.confirmed = False
+            result.confirmation = f"PRUEBA: Submit bloqueado, nada salió ({len(result.blocked)} requests detenidos)"
+            return
         try:
             if cmd_file and os.path.exists(cmd_file):
                 cmd = Path(cmd_file).read_text().strip()
@@ -609,7 +644,7 @@ async def _live_wait(page, cmd_file, after_shot, minutes, result, on_success=Non
             text = await page.locator("body").inner_text()
         except Exception:
             break
-        if looks_sent(text):
+        if looks_sent(text) and not dry:
             result.submitted = result.confirmed = True
             result.confirmation = next((ln for ln in text.splitlines() if looks_sent(ln)), "submitted")[:200]
             if on_success:
@@ -622,6 +657,9 @@ async def _live_wait(page, cmd_file, after_shot, minutes, result, on_success=Non
             except Exception:
                 pass
             return
+    if dry:
+        result.confirmation = f"PRUEBA: terminó sin Submit ({len(result.blocked)} requests detenidos)"
+        return
     if clicked:  # we clicked Submit but never saw a confirmation
         result.submitted = True
         result.confirmation = "enviado desde la app; la página no mostró confirmación"
@@ -692,7 +730,7 @@ async def _reach_form(page, url: str):
 
 
 async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str,
-                            on_ready, minutes: int, writing: str = "", cmd_file: str = "") -> Result:
+                            on_ready, minutes: int, writing: str = "", cmd_file: str = "", dry: bool = False) -> Result:
     """Fill ANY form in a headed browser: reach the form, scan fields, map them with the LLM (or a saved recipe for
     this host), fill, then the person solves the captcha and submits. Learns the host on success."""
     from patchright.async_api import async_playwright as live_playwright
@@ -702,7 +740,7 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
     async with live_playwright() as p:
         ctx = await p.chromium.launch_persistent_context(
             user_data_dir=f"/tmp/live-{os.getpid()}", headless=False, no_viewport=True,
-            args=["--no-sandbox", "--start-maximized"])
+            service_workers="block" if dry else "allow", args=["--no-sandbox", "--start-maximized"])
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         status, page = await _reach_form(page, url)
         if status == "wall":
@@ -725,6 +763,8 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
         except Exception:
             pass
         await _scroll_to_captcha(page)
+        if dry:
+            await _dry_run(ctx, result)
         if on_ready:
             on_ready()
         async def _on_success(pg):
@@ -733,11 +773,11 @@ async def _run_live_general(url: str, facts: str, cv_path: str, job: dict, data:
             except Exception:
                 pass
             general.save_recipe(data, pg.url, raw, plan_items, fill)
-        await _live_wait(page, cmd_file, after_shot, minutes, result, on_success=_on_success)
+        await _live_wait(page, cmd_file, after_shot, minutes, result, on_success=None if dry else _on_success, dry=dry)
         await ctx.close()
     return result
 
 
 def fill_live_general(url: str, facts: str, cv_path: str, job: dict, data: str, shot: str, after_shot: str = "",
-                      on_ready=None, minutes: int = 30, writing: str = "", cmd_file: str = "") -> Result:
-    return asyncio.run(_run_live_general(url, facts, cv_path, job, data, shot, after_shot, on_ready, minutes, writing, cmd_file))
+                      on_ready=None, minutes: int = 30, writing: str = "", cmd_file: str = "", dry: bool = False) -> Result:
+    return asyncio.run(_run_live_general(url, facts, cv_path, job, data, shot, after_shot, on_ready, minutes, writing, cmd_file, dry))
