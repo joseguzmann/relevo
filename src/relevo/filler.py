@@ -742,8 +742,14 @@ async def _reach_form(page, url: str):
     Apply — not ours) or 'none'. Uses page.evaluate for counts (patchright's Locator.count is broken here)."""
     async def nfields(pg):
         try:
-            return await pg.evaluate("""() => [...document.querySelectorAll('input, textarea, select')]
-              .filter(e => e.type !== 'hidden' && (e.type === 'file' || e.offsetWidth || e.offsetHeight)).length""")
+            # Application fields only: not the site search, the newsletter box or anything in header/nav/footer
+            # (Jobicy's job page has 3+ of those and was taken for the form, so Apply was never pressed).
+            return await pg.evaluate(r"""() => [...document.querySelectorAll('input, textarea, select')]
+              .filter(e => e.type !== 'hidden' && e.type !== 'search' && (e.type === 'file' || e.offsetWidth || e.offsetHeight))
+              .filter(e => !e.closest('header, nav, footer, [role=search], [class*=newsletter], [class*=subscribe]'))
+              .filter(e => !/search|buscar|keyword|newsletter|subscribe|^q$/i.test([e.name, e.id, e.placeholder,
+                 e.getAttribute('aria-label')].join(' ')))
+              .length""")
         except Exception:
             return 0
 
