@@ -726,13 +726,24 @@ async def _dismiss_cookies(page) -> str:
         return ""
 
 
+async def _is_login(page) -> bool:
+    """A login or account page is never a form to fill (13-nov: a Google Form that needs sign-in landed on
+    accounts.google.com and Jobicy's Apply on its /my-profile; both have enough hidden inputs to look like a form)."""
+    try:
+        has_password = await page.evaluate("() => !!document.querySelector('input[type=password]')")
+    except Exception:
+        has_password = False
+    return bool(LOGIN_URL.search(page.url or "")) or has_password
+
+
 async def _reach_form(page, url: str):
     """Phase 1: open the job link and get to the actual form. Follows an external 'Apply' button (incl. out of a
     LinkedIn job) and new tabs. Returns (status, page): 'form' (a fillable page), 'wall' (LinkedIn login / Easy
     Apply — not ours) or 'none'. Uses page.evaluate for counts (patchright's Locator.count is broken here)."""
     async def nfields(pg):
         try:
-            return await pg.evaluate("() => document.querySelectorAll('input, textarea, select').length")
+            return await pg.evaluate("""() => [...document.querySelectorAll('input, textarea, select')]
+              .filter(e => e.type !== 'hidden' && (e.type === 'file' || e.offsetWidth || e.offsetHeight)).length""")
         except Exception:
             return 0
 
@@ -740,6 +751,8 @@ async def _reach_form(page, url: str):
     await page.wait_for_timeout(1500)
     await _dismiss_cookies(page)
     ctx = page.context
+    if await _is_login(page):
+        return "wall", page
     if await nfields(page) >= 3:
         return "form", page
     if CLOSED.search(((await page.locator("body").inner_text()) or "")[:4000]):
@@ -770,16 +783,15 @@ async def _reach_form(page, url: str):
             await page.wait_for_timeout(1500)
     body = ((await page.locator("body").inner_text()) or "")[:4000]
     n = await nfields(page)
+    if await _is_login(page):
+        return "wall", page
     if n < 3 and CLOSED.search(body):
         return "closed", page
     if "linkedin.com" in (page.url or "") and n < 3 and LOGIN_WALL.search(body):
         return "wall", page
     if n < 3 and ACCOUNT_WALL.search(body):  # any site whose apply starts with an account (micro1, Workday…)
         return "wall", page
-    # A login or account page is never a form to fill: Google Forms that need sign-in landed on accounts.google.com and
-    # the filler typed the email into it (13-nov test). URL or a password box is enough to stop.
-    has_password = await page.evaluate("() => !!document.querySelector('input[type=password]')")
-    if LOGIN_URL.search(page.url or "") or has_password:
+    if await _is_login(page):
         return "wall", page
     return ("form", page) if n >= 3 else ("none", page)
 

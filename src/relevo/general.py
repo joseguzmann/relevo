@@ -159,10 +159,30 @@ async def fill_fields(page, raw: list, plan_items: list, cv_path: str) -> dict:
     return result
 
 
+TICK_JS = r"""(s) => {
+  // Custom-styled radios/checkboxes hide the real input: click its label, else the input itself, from inside the page.
+  const el = document.querySelector(s);
+  if (!el) return false;
+  if (el.checked) return true;
+  const lab = (el.id && document.querySelector('label[for="' + el.id + '"]')) || el.closest('label');
+  (lab || el).click();
+  if (!el.checked) el.click();
+  return el.checked;
+}"""
+
+
+async def _tick(page, selector: str) -> bool:
+    try:
+        await page.locator(selector).first.check(force=True, timeout=3000)
+        return True
+    except Exception:
+        return bool(await page.evaluate(TICK_JS, selector))
+
+
 async def _fill_one(page, f: dict, value, cv_path: str) -> bool:
     t = f["type"]
-    if t == "file":
-        await page.locator('input[type=file]').first.set_input_files(cv_path)
+    if t == "file":  # its own input: Zoho has an "autofill" upload before the real Resume one
+        await page.locator(f["selector"]).first.set_input_files(cv_path)
         await page.wait_for_timeout(1500)
         return True
     if t == "select":
@@ -181,13 +201,11 @@ async def _fill_one(page, f: dict, value, cv_path: str) -> bool:
         want = [str(v).strip() for v in (value if isinstance(value, list) else [value])]
         affirm = {"yes", "sí", "si", "true", "1", "on", "acepto", "agree", "i agree"}
         if t == "checkbox" and len(opts) == 1 and want and want[0].lower() in affirm:
-            await page.locator(opts[0]["selector"]).first.check(force=True)
-            return True
+            return await _tick(page, opts[0]["selector"])
         hit = False
         for o in opts:
             if str(o.get("label", "")).strip() in want or str(o.get("value", "")) in want:
-                await page.locator(o["selector"]).first.check(force=True)
-                hit = True
+                hit = await _tick(page, o["selector"]) or hit
         return hit
     box = page.locator(f["selector"]).first
     text = str(value)

@@ -255,7 +255,7 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
         result = filler.fill_live_general(url, facts, cv, job, cfg.data, shot,
                                           after_shot=str(after_shot(cfg, item_id)), on_ready=ready, writing=writing,
                                           cmd_file=str(live_cmd(cfg, item_id)), dry=is_test(item))
-        if is_test(item) and result.confirmation not in ("wall", "no-form"):
+        if is_test(item) and result.confirmation not in ("wall", "no-form", "closed"):
             _finish_test(cfg, store, item_id, result)
         elif result.confirmation == "wall":
             store.finish(item_id, "manual", "pide iniciar sesión o crear cuenta (LinkedIn Easy Apply, micro1…): a mano")
