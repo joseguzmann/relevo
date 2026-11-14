@@ -230,6 +230,8 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
     panel = item["data"]
     job = panel.get("job", {})
     url = job.get("url") or panel.get("target")
+    if "linkedin.com" in (url or "") and panel.get("target") and "linkedin.com" not in panel["target"]:
+        url = panel["target"]  # the post is behind a login; its link (resolved from lnkd.in) is where the form is
     company = job.get("company", "")
     try:
         kit = prepare.Kit(cfg.kit)

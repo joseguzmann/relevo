@@ -33,3 +33,10 @@ class LinkTests(unittest.TestCase):
     def test_never_returns_a_linkedin_destination(self):
         with mock.patch.object(route, "_get", return_value=(200, "", '<a href="https://www.linkedin.com/jobs/view/1">x</a>')):
             self.assertEqual(route.unshorten("https://lnkd.in/abc"), "")
+
+    def test_unknown_destination_becomes_the_manual_target(self):
+        calls = {"https://lnkd.in/f1": (200, "", '<a href="https://forms.fillout.com/t/abc">x</a>'),
+                 "https://forms.fillout.com/t/abc": (200, "", "<form></form>")}
+        with mock.patch.object(route, "_get", side_effect=lambda u, follow=True: calls[u]):
+            job = {"url": "https://www.linkedin.com/posts/x_hiring-1", "description": "Apply https://lnkd.in/f1"}
+            self.assertEqual(route.decide(job), ("manual", "https://forms.fillout.com/t/abc"))

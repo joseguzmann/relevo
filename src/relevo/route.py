@@ -91,8 +91,7 @@ def linked_form(text: str, cache_file: str = "", limit: int = 3) -> tuple[str, s
         if ats:
             return ats, url, ""
         m = ANY_ATS.search(body)
-        if m:
-            other = other or m.group(0)
+        other = other or (m.group(0) if m else dest)  # any destination beats the post: the post is behind a login
     return "", "", other
 
 
@@ -112,7 +111,7 @@ def decide(job: dict) -> tuple[str, str]:
         if email:
             return "email", email
         if other:
-            return "manual", other  # an ATS without a reader: the live filler starts at its form, not at the post
+            return "manual", other  # a form Relevo has no reader for: the live filler starts there, not at the post
     return "manual", job.get("url", "")
 
 
