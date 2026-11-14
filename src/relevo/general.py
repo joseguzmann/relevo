@@ -28,13 +28,28 @@ SCAN_JS = r"""() => {
     }
     return path.join(' > ');
   };
-  const label = (el) => {
+  const FIELDS = 'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select';
+  // Text of the largest ancestor that holds ONLY this field (or only this radio/checkbox group): the question and
+  // nothing from the next one. The old "closest [class*=field]" took the whole form on Loxo, so every field got the
+  // form's first paragraph as its label.
+  const ownText = (el, group) => {
+    let best = '', a = el.parentElement;
+    for (let d = 0; a && d < 8 && a.tagName !== 'FORM' && a.tagName !== 'BODY'; d++, a = a.parentElement) {
+      const inside = [...a.querySelectorAll(FIELDS)];
+      const only = group ? inside.every(x => x.name === el.name) : inside.length === 1;
+      if (!only) break;
+      const txt = (a.innerText || '').trim();
+      if (txt) best = txt;
+    }
+    return best;
+  };
+  const label = (el, group) => {
     let t = '';
-    if (el.id) { const l = document.querySelector('label[for="' + el.id.replace(/"/g,'\\"') + '"]'); if (l) t = l.innerText; }
-    if (!t) t = el.getAttribute('aria-label') || '';
-    if (!t) { const box = el.closest('[class*=field], [class*=question], [class*=form-group], label'); if (box) t = box.innerText; }
+    if (!group && el.id) { const l = document.querySelector('label[for="' + el.id.replace(/"/g,'\\"') + '"]'); if (l) t = l.innerText; }
+    if (!t && !group) t = el.getAttribute('aria-label') || '';
+    if (!t) t = ownText(el, group);
     if (!t) t = el.placeholder || el.name || '';
-    return t.replace(/\s+/g, ' ').trim().slice(0, 200);
+    return t.replace(/\s+/g, ' ').trim().slice(0, 300);
   };
   const out = [], groups = {};
   let k = 0;
@@ -43,14 +58,13 @@ SCAN_JS = r"""() => {
   const mark = (el) => { const v = 'f' + (k++); el.setAttribute('data-relevo-f', v); return '[data-relevo-f="' + v + '"]'; };
   for (const el of document.querySelectorAll('input, textarea, select')) {
     const tag = el.tagName.toLowerCase();
-    if (el.type === 'hidden' || el.name === 'g-recaptcha-response') continue;
+    if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button' || el.type === 'reset' || el.name === 'g-recaptcha-response') continue;
     if (el.closest('[aria-hidden=true]')) continue;
     if (el.type !== 'file' && !(el.offsetWidth || el.offsetHeight || el.getClientRects().length)) continue;
     const type = tag === 'select' ? 'select' : (tag === 'textarea' ? 'textarea' : el.type);
     if (type === 'radio' || type === 'checkbox') {
       const key = el.name || label(el);
-      const fieldset = el.closest('fieldset, [role=radiogroup], [class*=question]');
-      groups[key] = groups[key] || {name: key, type, label: label(fieldset || el), options: [], required: el.required};
+      groups[key] = groups[key] || {name: key, type, label: (el.name && label(el, true)) || label(el), options: [], required: el.required};
       groups[key].options.push({label: label(el) || el.value, selector: mark(el), fallback: sel(el), value: el.value});
       continue;
     }
