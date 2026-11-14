@@ -258,7 +258,7 @@ def try_live(cfg: Config, store: Store, item_id: int) -> None:
         if is_test(item) and result.confirmation not in ("wall", "no-form"):
             _finish_test(cfg, store, item_id, result)
         elif result.confirmation == "wall":
-            store.finish(item_id, "manual", "es LinkedIn/login (Easy Apply): esta se postula a mano")
+            store.finish(item_id, "manual", "pide iniciar sesión o crear cuenta (LinkedIn Easy Apply, micro1…): a mano")
         elif result.confirmation == "no-form":
             store.finish(item_id, "manual", "no encontré un formulario que llenar en ese link: a mano")
         elif result.confirmed:

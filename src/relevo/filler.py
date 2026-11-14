@@ -579,6 +579,7 @@ async def _dry_run(ctx, result: Result) -> None:
 
 
 APPLY = re.compile(r"\b(apply|postul|aplicar|solicitar)\b", re.I)
+ACCOUNT_WALL = re.compile(r"continue with google|sign up to apply|create (an )?account|sign in to apply|log in to apply", re.I)
 LOGIN_WALL = re.compile(r"sign in to apply|iniciar sesión|to apply on the company|easy apply|solicitud sencilla", re.I)
 
 SCROLL_TO_CAPTCHA_JS = r"""() => {
@@ -726,6 +727,8 @@ async def _reach_form(page, url: str):
     body = ((await page.locator("body").inner_text()) or "")[:4000]
     n = await nfields(page)
     if "linkedin.com" in (page.url or "") and n < 3 and LOGIN_WALL.search(body):
+        return "wall", page
+    if n < 3 and ACCOUNT_WALL.search(body):  # any site whose apply starts with an account (micro1, Workday…)
         return "wall", page
     return ("form", page) if n >= 3 else ("none", page)
 

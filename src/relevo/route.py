@@ -127,6 +127,7 @@ BOARDS = {"computrabajo": "Computrabajo", "freehire": "FreeHire", "getonbrd": "G
 
 
 AUTO = {"ashby", "manatal", "greenhouse", "breezy"}
+ACCOUNT = re.compile(r"https?://([^/]*\.)?(micro1\.ai|myworkdayjobs\.com|myworkday\.com)(/|$)", re.I)  # apply = sign up first
 CAPTCHA = {"bamboohr"}
 
 
@@ -141,6 +142,8 @@ def support(way: str, target: str = "", job_url: str = "") -> dict:
     if way in CAPTCHA:
         return {"level": "captcha", "icon": "🟡", "label": "Relevo la llena; tú resuelves el captcha"}
     dest = target if target and "linkedin.com" not in target else ""
+    if dest and ACCOUNT.search(dest):
+        return {"level": "hand", "icon": "⚪", "label": "A mano: ese sitio pide crear una cuenta (micro1, Workday…)"}
     if dest:
         return {"level": "ai", "icon": "🔵", "label": "IA en vivo: Relevo lee el formulario y lo llena; tú revisas y envías"}
     if "linkedin.com/jobs/" in (job_url or ""):

@@ -54,3 +54,9 @@ class SupportTests(unittest.TestCase):
         self.assertEqual(route.support("manual", "https://forms.fillout.com/t/x")["level"], "ai")
         self.assertEqual(route.support("manual", "https://www.linkedin.com/posts/x", "https://www.linkedin.com/posts/x")["level"], "hand")
         self.assertEqual(route.support("manual", "", "https://www.linkedin.com/jobs/view/1")["level"], "ai")
+
+
+class AccountTests(unittest.TestCase):
+    def test_account_sites_are_by_hand(self):
+        self.assertEqual(route.support("manual", "https://jobs.micro1.ai/post/abc")["level"], "hand")
+        self.assertEqual(route.support("manual", "https://acme.wd5.myworkdayjobs.com/x")["level"], "hand")
