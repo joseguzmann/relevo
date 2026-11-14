@@ -77,19 +77,27 @@ def tick(cfg: Config, store: Store, kit: prepare.Kit, pem: str) -> None:
 
 
 def outbox(cfg: Config, item: dict, material: str) -> None:
-    if item["job_id"] < 0:  # a test item is not an application
+    if item["job_id"] < 0 or is_test(item):  # a test item is not an application
         return
     folder = Path(cfg.data) / "outbox"
     folder.mkdir(exist_ok=True)
     panel = item["data"]
     record = {"job_id": item["job_id"], "family": panel.get("family"), "route": item["route"], "material": material,
-              "cv": f"v3 {panel.get('family')} (Relevo)", "panel": panel, "codes": panel.get("codes", {}),
+              "cv": f"{cv_version(cfg)} {panel.get('family')} (Relevo)", "panel": panel, "codes": panel.get("codes", {}),
               "company": panel.get("job", {}).get("company", "")}
     (folder / f"{item['id']}.json").write_text(json.dumps(record, ensure_ascii=False))
 
 
 def form_material(panel: dict, ats: str = "") -> str:
     return f"{forms.NAMES.get(ats, 'ATS')} form by Relevo: " + "; ".join(f"{f['label'][:40]}={f['value']}" for f in panel["fields"] if f["kind"] != "file")
+
+
+def cv_version(cfg: Config) -> str:
+    """The CV folder the kit was built from (written by career-os scripts/relevo-kit.sh), e.g. 2026-11-12-v4."""
+    try:
+        return (Path(cfg.kit) / "cv" / "version").read_text().strip() or "cv?"
+    except OSError:
+        return "cv?"
 
 
 def code_file(cfg: Config, item_id: int) -> Path:
