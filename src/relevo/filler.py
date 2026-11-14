@@ -693,6 +693,25 @@ FIND_APPLY_JS = r"""() => {
 }"""
 
 
+COOKIE_NO = re.compile(r"^(decline all|reject all|decline|reject|only necessary|necessary only|use necessary cookies only|rechazar( todo)?|solo necesarias)$", re.I)
+COOKIE_YES = re.compile(r"^(accept all|accept|allow all|i agree|got it|ok|aceptar( todo)?|entendido)$", re.I)
+
+
+async def _dismiss_cookies(page) -> None:
+    """Cookie banners sit on top of 'Apply' and block the click (Workable). Prefer declining; accept only if that is
+    the only way to close it."""
+    for rx in (COOKIE_NO, COOKIE_YES):
+        for el in await page.query_selector_all("button, a[role=button], [role=button]"):
+            try:
+                txt = ((await el.inner_text()) or "").strip()
+                if txt and rx.match(txt) and await el.is_visible():
+                    await el.click(timeout=2000)
+                    await page.wait_for_timeout(500)
+                    return
+            except Exception:
+                continue
+
+
 async def _reach_form(page, url: str):
     """Phase 1: open the job link and get to the actual form. Follows an external 'Apply' button (incl. out of a
     LinkedIn job) and new tabs. Returns (status, page): 'form' (a fillable page), 'wall' (LinkedIn login / Easy
@@ -705,6 +724,7 @@ async def _reach_form(page, url: str):
 
     await page.goto(url, wait_until="domcontentloaded")
     await page.wait_for_timeout(1500)
+    await _dismiss_cookies(page)
     ctx = page.context
     if await nfields(page) >= 3:
         return "form", page
@@ -717,6 +737,11 @@ async def _reach_form(page, url: str):
             pass
         await page.wait_for_timeout(3000)
         extra = [pg for pg in ctx.pages if pg not in before]
+        if not extra and await nfields(page) < 3:  # same-page apps (Workable) render the form a bit later
+            for _ in range(6):
+                await page.wait_for_timeout(1000)
+                if await nfields(page) >= 3:
+                    break
         if extra:
             page = extra[-1]
             try:
