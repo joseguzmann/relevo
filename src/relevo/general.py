@@ -37,6 +37,10 @@ SCAN_JS = r"""() => {
     return t.replace(/\s+/g, ' ').trim().slice(0, 200);
   };
   const out = [], groups = {};
+  let k = 0;
+  // Mark every field with its own attribute: a selector that is unique by construction (the CSS path above was not:
+  // on Fillout it matched two elements and sent the phone into the salary box). The path stays as a fallback.
+  const mark = (el) => { const v = 'f' + (k++); el.setAttribute('data-relevo-f', v); return '[data-relevo-f="' + v + '"]'; };
   for (const el of document.querySelectorAll('input, textarea, select')) {
     const tag = el.tagName.toLowerCase();
     if (el.type === 'hidden' || el.name === 'g-recaptcha-response') continue;
@@ -47,11 +51,11 @@ SCAN_JS = r"""() => {
       const key = el.name || label(el);
       const fieldset = el.closest('fieldset, [role=radiogroup], [class*=question]');
       groups[key] = groups[key] || {name: key, type, label: label(fieldset || el), options: [], required: el.required};
-      groups[key].options.push({label: label(el) || el.value, selector: sel(el), value: el.value});
+      groups[key].options.push({label: label(el) || el.value, selector: mark(el), fallback: sel(el), value: el.value});
       continue;
     }
     const options = type === 'select' ? [...el.options].map(o => o.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean) : [];
-    out.push({selector: sel(el), label: label(el), type, options, required: el.required});
+    out.push({selector: mark(el), fallback: sel(el), label: label(el), type, options, required: el.required});
   }
   for (const g of Object.values(groups)) out.push(g);
   return out;
@@ -141,10 +145,15 @@ async def _fill_one(page, f: dict, value, cv_path: str) -> bool:
         await page.wait_for_timeout(1500)
         return True
     if t == "select":
+        want = str(value).strip()
+        opts = [str(o) for o in f.get("options", [])]
+        pick = next((o for o in opts if o.strip().lower() == want.lower()), None) \
+            or next((o for o in opts if want.lower() in o.lower()), None)  # "Ecuador" matches "Ecuador (+593)"
+        box = page.locator(f["selector"]).first
         try:
-            await page.locator(f["selector"]).select_option(label=str(value))
+            await box.select_option(label=pick or want)
         except Exception:
-            await page.locator(f["selector"]).select_option(str(value))
+            await box.select_option(pick or want)
         return True
     if t in ("radio", "checkbox"):
         opts = f.get("options", [])
@@ -161,6 +170,10 @@ async def _fill_one(page, f: dict, value, cv_path: str) -> bool:
         return hit
     box = page.locator(f["selector"]).first
     text = str(value)
+    if t == "tel":  # phone widgets reformat ("+593 99 592 5200"): compare digits, not text
+        await box.fill(text)
+        got = re.sub(r"\D", "", await box.input_value())
+        return bool(got) and (got.endswith(re.sub(r"\D", "", text)[-9:]))
     if t == "number":  # e.g. a phone typed into <input type=number>: digits only
         text = re.sub(r"\D", "", text)
     await box.fill(text)
