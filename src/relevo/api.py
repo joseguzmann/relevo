@@ -169,7 +169,9 @@ def items():
 
 def origin(it: dict) -> dict:
     panel = it["data"]
-    return route.origin(panel.get("job", {}), it["route"], panel.get("email", {}).get("to", ""))
+    out = route.origin(panel.get("job", {}), it["route"], panel.get("email", {}).get("to", ""))
+    out["support"] = route.support(it["route"], panel.get("target", ""), panel.get("job", {}).get("url", ""))
+    return out
 
 
 def need(item_id: int) -> dict:

@@ -45,3 +45,6 @@ a{color:var(--brand)}
 .liveover .livebar .livesend { width: auto; flex: 1 1 auto; min-width: 120px; }
 .liveover .livebar .livemsg:empty { display: none; }
 .liveover .livebar .livemsg { order: -1; flex: 1 0 100%; text-align: center; }  /* its own line above the buttons */
+.tag.sup{display:inline-block;margin-top:6px;padding:3px 8px;border-radius:999px;font-weight:600}
+.tag.sup.auto{background:rgba(34,160,90,.15)}.tag.sup.captcha{background:rgba(220,170,20,.18)}
+.tag.sup.ai{background:rgba(50,120,230,.15)}.tag.sup.hand{background:rgba(140,140,140,.15)}

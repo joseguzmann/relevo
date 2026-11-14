@@ -43,7 +43,8 @@ async function list() {
     i.warning ? el('div', {className: 'tag confirm', textContent: i.warning.discard ? '⚠️ Posible descarte' : '⚠️ Con duda'}) : null,
     el('div', {textContent: i.job.title || 'Vacante'}),
     el('div', {className: 'soft', textContent: `${i.job.company || ''} · ${i.job.match ?? '-'}/10 · ${STATUS[i.status] || i.status}`}),
-    el('div', {className: 'soft', textContent: `${i.origin.channel} · ${i.origin.source} → ${i.origin.exit}`}));
+    el('div', {className: 'soft', textContent: `${i.origin.channel} · ${i.origin.source} → ${i.origin.exit}`}),
+    i.origin.support ? el('div', {className: 'tag sup ' + i.origin.support.level, textContent: `${i.origin.support.icon} ${i.origin.support.label}`}) : null);
   const views = [el('h1', {textContent: 'Relevo'})];
   if ('Notification' in window && Notification.permission !== 'granted') {
     const b = el('button', {className: 'main', textContent: 'Activar notificaciones'});
@@ -92,6 +93,7 @@ async function detail(id) {
       el('div', {textContent: `${job.company || ''} · ${job.match ?? '-'}/10`}),
       el('p', {className: 'soft', textContent: `Canal: ${item.origin.channel} · Fuente: ${item.origin.source}`}),
       el('p', {className: 'soft', textContent: `Sale por: ${item.origin.exit}`}),
+      item.origin.support ? el('div', {className: 'tag sup ' + item.origin.support.level, textContent: `${item.origin.support.icon} ${item.origin.support.label}`}) : null,
       item.origin.location ? el('p', {className: 'soft', textContent: `Ubicación: ${item.origin.location}`}) : null,
       el('p', {className: 'soft', textContent: job.why || ''}),
       job.blockers && job.blockers !== '[]' ? el('p', {className: 'soft', textContent: 'Ojo: ' + job.blockers}) : null,
@@ -117,14 +119,16 @@ async function detail(id) {
     f.source ? el('div', {className: 'soft', textContent: f.source}) : null)));
   if (item.status === 'manual') {
     const msg = el('div', {className: 'soft'});
-    const open = el('a', {href: d.job?.url || d.target || '#', target: '_blank', rel: 'noopener', className: 'button', textContent: 'Abrir la vacante'});
+    const open = el('a', {href: (d.target && !d.target.includes('linkedin.com') ? d.target : d.job?.url) || '#', target: '_blank', rel: 'noopener', className: 'button', textContent: 'Abrir la vacante'});
     const tryb = el('button', {className: 'main', textContent: 'Intentar llenar en vivo', onclick: async () => {
       working(tryb, 'Llenando…'); msg.className = 'soft'; msg.textContent = 'Siguiendo el link y llenando el formulario…';
       try { await api(`/items/${id}/trylive`, {method: 'POST'}); poll(id, msg); }
       catch (e) { tryb.disabled = false; tryb.textContent = 'Intentar llenar en vivo'; msg.className = 'soft missing'; msg.textContent = e.body?.detail || 'No se pudo'; }
     }});
     views.push(el('div', {className: 'card'},
-      el('p', {textContent: 'Relevo no reconoció un ATS. Puede intentar abrir el link, llenar el formulario que encuentre y avisarte para que revises, resuelvas el captcha y envíes. LinkedIn Easy Apply no: eso es a mano.'}),
+      el('p', {textContent: item.origin.support?.level === 'hand'
+        ? 'Esta es a mano: es LinkedIn sin link externo ni correo (Easy Apply). Ábrela y postula tú.'
+        : 'No es un ATS que Relevo conozca, pero la IA puede leer el formulario: abre el link, llena lo que sabe y te avisa para que revises, resuelvas el captcha y envíes.'}),
       el('div', {className: 'bar'}, el('div', {}, msg, el('div', {className: 'actions'}, open, tryb)))));
   }
   const save = () => api('/items/' + id, {method: 'PUT', body: JSON.stringify({fields: changes, email: mail, accepted_unknown: [...accepted]})});

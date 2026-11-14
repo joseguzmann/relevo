@@ -45,8 +45,13 @@ def backlog(cfg: Config) -> list[dict]:
 def notify(cfg: Config, store: Store, pem: str, job: dict, status: str, item: int | None, panel: dict) -> None:
     """Every job in the app gets a notification."""
     if item:
-        mark = "A mano · " if status == "manual" else "⚠️ " if panel.get("warning") else ""
-        push.send(store, pem, cfg.site, job.get("company") or "Relevo", mark + job.get("title", "")[:90], item)
+        from relevo import route
+        way = "manual" if status == "manual" else (panel.get("route") or store.get(item)["route"])
+        sup = route.support(way, panel.get("target", ""), job.get("url", ""))
+        short = {"auto": "Relevo la envía", "captcha": "llena + captcha", "ai": "IA en vivo", "hand": "a mano"}[sup["level"]]
+        warn = "⚠️ " if panel.get("warning") else ""
+        push.send(store, pem, cfg.site, f"{sup['icon']} {job.get('company') or 'Relevo'}",
+                  f"{warn}{short} · {job.get('title', '')[:80]}", item)
 
 
 def page_text(url: str) -> str:

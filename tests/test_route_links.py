@@ -44,3 +44,13 @@ class LinkTests(unittest.TestCase):
     def test_destination_is_unescaped(self):
         with mock.patch.object(route, "_get", return_value=(200, "", '<a href="https://a.io/j?x=1&amp;y=2">x</a>')):
             self.assertEqual(route.unshorten("https://lnkd.in/zz"), "https://a.io/j?x=1&y=2")
+
+
+class SupportTests(unittest.TestCase):
+    def test_levels(self):
+        self.assertEqual(route.support("ashby")["level"], "auto")
+        self.assertEqual(route.support("email")["level"], "auto")
+        self.assertEqual(route.support("bamboohr")["level"], "captcha")
+        self.assertEqual(route.support("manual", "https://forms.fillout.com/t/x")["level"], "ai")
+        self.assertEqual(route.support("manual", "https://www.linkedin.com/posts/x", "https://www.linkedin.com/posts/x")["level"], "hand")
+        self.assertEqual(route.support("manual", "", "https://www.linkedin.com/jobs/view/1")["level"], "ai")

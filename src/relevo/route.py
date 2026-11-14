@@ -126,6 +126,28 @@ BOARDS = {"computrabajo": "Computrabajo", "freehire": "FreeHire", "getonbrd": "G
           "torre": "Torre", "weworkremotely": "We Work Remotely", "workingnomads": "Working Nomads"}
 
 
+AUTO = {"ashby", "manatal", "greenhouse", "breezy"}
+CAPTCHA = {"bamboohr"}
+
+
+def support(way: str, target: str = "", job_url: str = "") -> dict:
+    """How far Relevo can take this job, as the app and the notification show it (Jose, 2026-11-13: a signal on every
+    job so he knows whether to tap). level: auto | captcha | ai | hand."""
+    if way == "email":
+        return {"level": "auto", "icon": "🟢", "label": "Relevo la envía por correo"}
+    if way in AUTO:
+        extra = " (código por correo)" if way == "greenhouse" else ""
+        return {"level": "auto", "icon": "🟢", "label": f"Relevo la envía{extra}"}
+    if way in CAPTCHA:
+        return {"level": "captcha", "icon": "🟡", "label": "Relevo la llena; tú resuelves el captcha"}
+    dest = target if target and "linkedin.com" not in target else ""
+    if dest:
+        return {"level": "ai", "icon": "🔵", "label": "IA en vivo: Relevo lee el formulario y lo llena; tú revisas y envías"}
+    if "linkedin.com/jobs/" in (job_url or ""):
+        return {"level": "ai", "icon": "🔵", "label": "IA en vivo si el Apply sale a otro sitio; si es Easy Apply, a mano"}
+    return {"level": "hand", "icon": "⚪", "label": "A mano: LinkedIn sin link ni correo"}
+
+
 def origin(job: dict, way: str, target: str = "") -> dict:
     """Where a job was found and how it leaves, in the words the app shows."""
     url = job.get("url", "")
