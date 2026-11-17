@@ -234,12 +234,20 @@ async def _fill_bamboohr(page, f, value) -> bool:
     return await box.input_value() == str(value)
 
 
+ENTRY_JS = r"""(label) => {
+  const want = label.trim().toLowerCase();
+  return [...document.querySelectorAll('[class*="fieldEntry"]')]
+    .findIndex(e => (e.querySelector('label')?.innerText || '').trim().toLowerCase().startsWith(want));
+}"""
+
+
 async def _entry(page, label: str):
     """The field whose own label starts with this text. A plain text match also hits longer labels that contain the
-    word ("Country" inside "eligible to work in the country"), and .first then picks the wrong field (Camunda, 17-nov)."""
+    word ("Country" inside "eligible to work in the country"), and .first then picks the wrong field (Camunda, 17-nov).
+    Found by index in the page, not with filter(has=...): patchright (the live browser) breaks on nested locators."""
     entries = page.locator('[class*="fieldEntry"]')
-    own = entries.filter(has=page.locator("label").filter(has_text=re.compile(r"^\s*" + re.escape(label.strip()), re.I)))
-    return own.first if await own.count() else entries.filter(has_text=label).first
+    i = await page.evaluate(ENTRY_JS, label)
+    return entries.nth(i) if i >= 0 else entries.filter(has_text=label).first
 
 
 ACCEPT_JS = r"""(want) => {
@@ -276,9 +284,9 @@ async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
     if f.kind == "yes_no":
         await entry.get_by_role("button", name=value, exact=True).click()
         return await entry.locator("input[type=checkbox]").first.is_checked() == (value == "Yes")
-    if f.kind == "single_choice" and await entry.locator("input[type=radio]").count():
+    if f.kind == "single_choice" and await entry.evaluate("e => !!e.querySelector('input[type=radio]')"):
         await entry.locator("label").filter(has_text=value).first.click()
-        return await entry.locator("input[type=radio]:checked").count() == 1
+        return await entry.evaluate("e => e.querySelectorAll('input[type=radio]:checked').length") == 1
     if f.kind in ("single_choice", "location"):
         box = entry.locator("input").first
         await box.click()
@@ -290,7 +298,8 @@ async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
     if f.kind == "multi_choice":
         for v in value if isinstance(value, list) else [value]:
             await entry.locator("label").filter(has_text=v).first.click()
-        return await entry.locator("input[type=checkbox]:checked").count() == len(value if isinstance(value, list) else [value])
+        return await entry.evaluate("e => e.querySelectorAll('input[type=checkbox]:checked').length") == len(
+            value if isinstance(value, list) else [value])
     raise ValueError(f"cannot fill {f.kind}")
 
 
