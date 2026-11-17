@@ -183,7 +183,7 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
         shot = str(Path(cfg.data) / f"shot-{item_id}.png")
         company = panel.get("job", {}).get("company", "")
 
-        if item["route"] in forms.HAND:
+        def live_captcha():
             # Captcha ATS: Relevo fills a headed browser on the Gateway; the person opens the live view (only through
             # the app, behind the passcode), solves the captcha and clicks Submit. The browser is shared via /live.
             def live_ready():
@@ -204,6 +204,9 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
                 store.finish(item_id, "sent", result.confirmation[:200])
             else:
                 store.finish(item_id, "failed", "no se envió (captcha/Submit no completado a tiempo)")
+
+        if item["route"] in forms.HAND:
+            live_captcha()
             return
 
         def asked():
@@ -229,6 +232,10 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
         elif result.confirmed:
             outbox(cfg, item, form_material(panel, item["route"]))
             store.finish(item_id, "sent", result.confirmation[:200])
+        elif result.challenge and not result.requests:
+            # Ashby asked for an image captcha on the click and nothing went out (Camunda #195, 17-nov): same road as
+            # BambooHR, the headed browser + the live view in the app, where the person solves it and submits.
+            live_captcha()
         else:
             store.finish(item_id, "unclear", f"submitted, no confirmation seen. ATS: {result.server or 'no answer seen'}. "
                                              f"Page: {result.confirmation}")

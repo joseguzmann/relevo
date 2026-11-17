@@ -115,3 +115,31 @@ class CamundaCase(unittest.TestCase):
         result = self.run_form(())
         self.assertFalse(result.submitted)
         self.assertEqual(len(result.unknown), 1)
+
+
+CHALLENGE_PAGE = """<!doctype html><div class="fieldEntry"><label>Name</label><input></div>
+<button id=b>Submit Application</button><script>
+b.onclick = () => document.body.insertAdjacentHTML('beforeend',
+  '<iframe title="recaptcha challenge expires in two minutes" src="/recaptcha/api2/bframe?k=x" style="width:400px;height:580px"></iframe>');
+</script>"""
+
+
+class ChallengeHandler(Handler):
+    def do_GET(self):
+        self._send("text/html", CHALLENGE_PAGE if self.path == "/" else "<p>challenge</p>")
+
+
+@unittest.skipIf(filler is None or filler.async_playwright is None, "needs Playwright")
+class ImageCaptchaOnClick(unittest.TestCase):
+    """17-nov, Camunda (Ashby): the click raised an image captcha and Relevo waited and called it 'no confirmation'."""
+
+    def test_the_challenge_is_seen_and_nothing_went_out(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), partial(ChallengeHandler, "{}"))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        form = Form(f"http://127.0.0.1:{server.server_port}/", [Field("n", "Name", "text", True)])
+        with tempfile.TemporaryDirectory() as d:
+            result = asyncio.run(filler.run(form, {"n": "Ana"}, f"{d}/a.png", True, (), f"{d}/b.png", 12))
+        server.shutdown()
+        self.assertTrue(result.challenge)
+        self.assertFalse(result.confirmed)
+        self.assertEqual(result.requests, [])

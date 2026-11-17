@@ -66,6 +66,7 @@ class Result:
     requests: list = field(default_factory=list)  # every request the click sent: method, url, body, answer
     unknown: list = field(default_factory=list)  # on the page but not in the form data: a person must see these
     blocked: list = field(default_factory=list)  # dry run (test item): write requests aborted instead of sent
+    challenge: bool = False  # the click raised an image captcha (invisible reCAPTCHA): nothing left, a person must solve it
 
     @property
     def failed(self) -> list[str]:
@@ -353,6 +354,20 @@ async def _enter_code(page, code: str) -> None:
     await page.wait_for_timeout(500)
 
 
+CHALLENGE = 'iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"], iframe[title*="challenge" i]'
+
+
+async def _challenge(page) -> bool:
+    """An image captcha is on screen (the bframe of an invisible reCAPTCHA becomes visible only when it asks)."""
+    for frame in await page.locator(CHALLENGE).all():
+        try:
+            if await frame.is_visible() and (await frame.bounding_box() or {}).get("height", 0) > 100:
+                return True
+        except Exception:
+            pass
+    return False
+
+
 async def _submit(page, result: Result, after_shot: str, seconds: int, code_file: str = "", asked=None,
                   ats: str = "ashby", captcha: dict | None = None) -> None:
     """Clicks once, then waits for the answer and keeps the evidence, whatever it turns out to be."""
@@ -398,6 +413,9 @@ async def _submit(page, result: Result, after_shot: str, seconds: int, code_file
         text = await page.locator("body").inner_text()
         result.confirmed = await button.count() == 0 and looks_sent(text)
         after_reply += 1 if replies else 0
+        if not result.confirmed and not replies and await _challenge(page):
+            result.challenge = True  # Ashby's invisible reCAPTCHA asked for images: the application waits for it
+            break
         if not result.confirmed and code_file and not tried_code and CODE_ASKED.search(text):
             tried_code = True  # the ATS emailed a code: the page stays open until the person types it
             if asked:
