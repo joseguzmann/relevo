@@ -52,6 +52,10 @@ def _body(request) -> str:
     return text[:6000]
 
 
+class SubmitStarted(Exception):
+    """An error once the Submit step began: the application may have gone out, so a person checks."""
+
+
 @dataclass
 class Result:
     verified: dict = field(default_factory=dict)
@@ -229,6 +233,27 @@ async def _fill_bamboohr(page, f, value) -> bool:
     return await box.input_value() == str(value)
 
 
+async def _entry(page, label: str):
+    """The field whose own label starts with this text. A plain text match also hits longer labels that contain the
+    word ("Country" inside "eligible to work in the country"), and .first then picks the wrong field (Camunda, 17-nov)."""
+    entries = page.locator('[class*="fieldEntry"]')
+    own = entries.filter(has=page.locator("label").filter(has_text=re.compile(r"^\s*" + re.escape(label.strip()), re.I)))
+    return own.first if await own.count() else entries.filter(has_text=label).first
+
+
+ACCEPT_JS = r"""(want) => {
+  for (const el of document.querySelectorAll('input[type=checkbox], input[type=radio]')) {
+    if (el.closest('[aria-hidden=true]')) continue;
+    const box = el.closest('[class*="fieldEntry"]') || el.closest('label')?.parentElement || el.parentElement;
+    const text = (box?.innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+    if ((text.slice(0, 200) || el.type) !== want) continue;
+    if (!el.checked) el.click();
+    return el.checked;
+  }
+  return false;
+}"""
+
+
 async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
     if ats == "bamboohr":
         return await _fill_bamboohr(page, f, value)
@@ -238,7 +263,7 @@ async def _fill_field(page, f, value, ats: str = "ashby") -> bool:
         return await _fill_greenhouse(page, f, value)
     if ats == "manatal":
         return await _fill_manatal(page, f, value)
-    entry = page.locator('[class*="fieldEntry"]').filter(has_text=f.label).first
+    entry = await _entry(page, f.label)
     if f.kind in ("text", "email", "number", "long_text"):
         box = entry.locator("input, textarea").first
         await box.fill(str(value))
@@ -473,11 +498,20 @@ async def run(form: Form, answers: dict, shot: str, submit: bool = False, accept
         result.unknown = await _unknown(page, form)
         for text in accepted:  # a box the person read and ticked in the panel
             if text in result.unknown:
-                await page.get_by_text(text.rsplit(" ", 2)[-2] + " " + text.rsplit(" ", 1)[-1], exact=True).first.click()
-                result.unknown.remove(text)
+                # found by the same (cut at 200) text _unknown reported, so a cut ending in a space still matches
+                try:
+                    ticked = await page.evaluate(ACCEPT_JS, text)
+                except Exception as e:
+                    ticked = False
+                    print(f"accepted box failed: {text[:60]}: {str(e)[:160]}")
+                if ticked:
+                    result.unknown.remove(text)
         await page.screenshot(path=shot, full_page=True)
         if submit and not result.failed and not result.unknown:
-            await _submit(page, result, after_shot, seconds, code_file, asked, form.ats, captcha)
+            try:
+                await _submit(page, result, after_shot, seconds, code_file, asked, form.ats, captcha)
+            except Exception as e:  # past this point the application may have gone out
+                raise SubmitStarted(str(e)) from e
         await browser.close()
     return result
 

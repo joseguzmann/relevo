@@ -211,8 +211,16 @@ def send(cfg: Config, store: Store, item_id: int) -> None:
             push.send(store, push.keys(cfg.data)[0], cfg.site, "Falta el código",
                       f"{company}: escribe el código que llegó al correo", item_id)
 
-        result = filler.fill(form, answers, shot, submit=not test, accepted=panel.get("accepted_unknown", []),
-                             after_shot=str(after_shot(cfg, item_id)), code_file=str(code_file(cfg, item_id)), asked=asked)
+        try:
+            result = filler.fill(form, answers, shot, submit=not test, accepted=panel.get("accepted_unknown", []),
+                                 after_shot=str(after_shot(cfg, item_id)), code_file=str(code_file(cfg, item_id)),
+                                 asked=asked)
+        except filler.SubmitStarted:
+            raise  # the click may have gone out: `unclear` below, a person checks
+        except Exception as e:
+            # Before Submit nothing leaves the browser (Camunda #195, 17-nov: was labelled unclear, never sent).
+            store.finish(item_id, "failed", f"not sent (error before Submit): {str(e)[:200]}")
+            return
         evidence(cfg, item_id).write_text(json.dumps(result.requests, ensure_ascii=False, indent=1))
         if test:
             store.finish(item_id, "failed", f"PRUEBA: llenado sin enviar; fallidos {result.failed}, desconocidos {result.unknown}")
